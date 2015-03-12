@@ -169,7 +169,7 @@
              (define-key slime-mode-map k-compile 'slime-eval-buffer)
              (define-key slime-mode-map k-docs 'slime-documentation)
              (define-key slime-mode-map k-goto-definition 'slime-edit-definition)
-             (define-key slime-mode-map k-jump-back 'slime-pop-find-definition-stack))
+             (define-key slime-mode-map k-jump-back 'slime-pop-find-definition-stack)))
 
 (load-file (concat user-emacs-directory "eldar-theme.el"))
 
