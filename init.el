@@ -92,7 +92,7 @@
 (global-set-key (kbd "s-M-q") 'winner-redo)
 
 ;; commenting
-(defun toggle-comment ()
+(defun my-toggle-comment ()
   (interactive)
   (let ((start (line-beginning-position))
         (end (line-end-position)))
@@ -107,25 +107,37 @@
                   (point))))
     (comment-or-uncomment-region start end)))
 
-(global-set-key (kbd "s-/") 'toggle-comment)
+(global-set-key (kbd "s-/") 'my-toggle-comment)
 
 ;; search
 (global-set-key (kbd "s-f") 'isearch-forward)
 (define-key isearch-mode-map (kbd "s-f") 'isearch-repeat-forward)
 
-(global-set-key (kbd "s-[") 'indent-region)
-
 ;; eval, compilation and stuf
-(define-key emacs-lisp-mode-map (kbd "<s-return>") 'eval-defun)
-(define-key emacs-lisp-mode-map (kbd "<f8>") 'eval-buffer)
+(setq k-eval (kbd "<s-return>"))
+(setq k-compile (kbd "<f8>"))
+(setq k-docs (kbd "<f4>"))
+(setq k-goto-definition (kbd "<f3>"))
+(setq k-jump-back (kbd "<f2>"))
 
-(add-hook 'coq-mode-hook
-          '(lambda ()
-             (define-key coq-mode-map (kbd "<s-return>") 'move-proof-to-point)
-             (define-key coq-mode-map (kbd "<f8>") 'coq-Compile)
-             ))
+(defmacro case-sel (no-sel sel)
+  `(lambda ()
+     (interactive)
+     (if
+         (region-active-p)
+         ,sel
+       ,no-sel)))
 
-(setq proof-follow-mode 'followdown)
+(global-set-key (kbd "s-p") 'indent-region)
+
+;; elisp
+(define-key emacs-lisp-mode-map k-eval (case-sel (eval-defun nil) (eval-region
+                                                                   (region-beginning)
+                                                                   (region-end)
+                                                                   t)))
+(define-key emacs-lisp-mode-map k-compile 'eval-buffer)
+
+;; Proof General
 (defun move-proof-to-point ()
   (interactive)
   (if (> (proof-queue-or-locked-end) (point))
@@ -138,7 +150,26 @@
       (proof-maybe-follow-locked-end)
       (next-line))))
 
+(add-hook 'coq-mode-hook
+          '(lambda ()
+             (define-key coq-mode-map k-eval 'move-proof-to-point)
+             (define-key coq-mode-map k-compile 'coq-Compile)))
+
+(setq proof-follow-mode 'followdown)
 (setq proof-splash-enable nil)
+
+;; Slime
+(add-hook 'slime-mode-hook
+          '(lambda ()
+             (define-key slime-mode-map k-eval (case-sel
+                                                (slime-eval-defun)
+                                                (slime-eval-region
+                                                 (region-beginning)
+                                                 (region-end))))
+             (define-key slime-mode-map k-compile 'slime-eval-buffer)
+             (define-key slime-mode-map k-docs 'slime-documentation)
+             (define-key slime-mode-map k-goto-definition 'slime-edit-definition)
+             (define-key slime-mode-map k-jump-back 'slime-pop-find-definition-stack))
 
 (load-file (concat user-emacs-directory "eldar-theme.el"))
 
@@ -147,7 +178,8 @@
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
- '(inhibit-startup-screen t))
+ '(inhibit-startup-screen t)
+ '(cursor-type (quote bar)))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
