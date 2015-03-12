@@ -1,0 +1,8 @@
+*.elc
+
+/*
+
+!.gitignore
+!init.el
+!eldar-theme.el
+!ProofGeneral
