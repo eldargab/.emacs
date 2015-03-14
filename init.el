@@ -65,7 +65,7 @@
 
 ;; Navigation
 (global-set-key (kbd "<C-tab>") 'ido-switch-buffer)
-(global-set-key (kbd "<s-M-tab>") 'ibuffer)
+(global-set-key (kbd "<C-s-tab>") 'ibuffer)
 
 ;; (define-key ido-completion-map "\t" nil)
 (global-set-key (kbd "C-q") 'keyboard-escape-quit)
@@ -117,8 +117,10 @@
 (setq k-eval (kbd "<s-return>"))
 (setq k-compile (kbd "<f8>"))
 (setq k-docs (kbd "<f4>"))
-(setq k-goto-definition (kbd "<f3>"))
-(setq k-jump-back (kbd "<f2>"))
+(setq k-goto-definition (kbd "<f6>"))
+(setq k-jump-back (kbd "<f5>"))
+(setq k-forward (kbd "<f3>"))
+(setq k-back (kbd "<f2>"))
 
 (defmacro case-sel (no-sel sel)
   `(lambda ()
@@ -145,15 +147,26 @@
         (proof-retract-until-point))
     (progn
       (save-excursion
-        (move-end-of-line nil)
+        ;; (move-end-of-line nil)
         (proof-assert-until-point))
       (proof-maybe-follow-locked-end)
-      (next-line))))
+      ;; (next-line)
+      )))
 
 (add-hook 'coq-mode-hook
           '(lambda ()
              (define-key coq-mode-map k-eval 'move-proof-to-point)
-             (define-key coq-mode-map k-compile 'coq-Compile)))
+             (define-key coq-mode-map k-compile 'coq-Compile)
+             (define-key coq-mode-map k-forward 'proof-assert-next-command-interactive)
+             (define-key coq-mode-map k-back 'proof-undo-last-successful-command)
+             (define-key coq-mode-map k-goto-definition '(lambda ()
+                                                           (interactive)
+                                                           (execute-kbd-macro
+                                                            (kbd "M-x coq-Print RET RET"))))
+             (define-key coq-mode-map k-docs '(lambda ()
+                                                (interactive)
+                                                (execute-kbd-macro
+                                                 (kbd "M-x coq-Check RET RET"))))))
 
 (setq proof-follow-mode 'followdown)
 (setq proof-splash-enable nil)
