@@ -117,8 +117,8 @@
 (setq k-eval (kbd "<s-return>"))
 (setq k-compile (kbd "<f8>"))
 (setq k-docs (kbd "<f4>"))
-(setq k-goto-definition (kbd "<f6>"))
-(setq k-jump-back (kbd "<f5>"))
+(setq k-jump-to-definition (kbd "<double-mouse-1>"))
+(setq k-jump-back (kbd "<s-double-mouse-1>>"))
 (setq k-forward (kbd "<f3>"))
 (setq k-back (kbd "<f2>"))
 
@@ -138,6 +138,7 @@
                                                                    (region-end)
                                                                    t)))
 (define-key emacs-lisp-mode-map k-compile 'eval-buffer)
+(define-key emacs-lisp-mode-map k-jump-to-definition 'find-function-at-point)
 
 ;; Proof General
 (defun move-proof-to-point ()
@@ -159,10 +160,10 @@
              (define-key coq-mode-map k-compile 'coq-Compile)
              (define-key coq-mode-map k-forward 'proof-assert-next-command-interactive)
              (define-key coq-mode-map k-back 'proof-undo-last-successful-command)
-             (define-key coq-mode-map k-goto-definition '(lambda ()
-                                                           (interactive)
-                                                           (execute-kbd-macro
-                                                            (kbd "M-x coq-Print RET RET"))))
+             (define-key coq-mode-map k-jump-to-definition '(lambda ()
+                                                              (interactive)
+                                                              (execute-kbd-macro
+                                                               (kbd "M-x coq-Print RET RET"))))
              (define-key coq-mode-map k-docs '(lambda ()
                                                 (interactive)
                                                 (execute-kbd-macro
@@ -181,7 +182,7 @@
                                                  (region-end))))
              (define-key slime-mode-map k-compile 'slime-eval-buffer)
              (define-key slime-mode-map k-docs 'slime-documentation)
-             (define-key slime-mode-map k-goto-definition 'slime-edit-definition)
+             (define-key slime-mode-map k-jump-to-definition 'slime-edit-definition)
              (define-key slime-mode-map k-jump-back 'slime-pop-find-definition-stack)))
 
 (load-file (concat user-emacs-directory "eldar-theme.el"))
