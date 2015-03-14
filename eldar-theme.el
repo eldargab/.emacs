@@ -97,6 +97,7 @@
  '(proof-tacticals-name-face ((t nil)))
  '(proof-locked-face ((t (:background "#eaffea"))))
  '(proof-queue-face ((t (:background "#eaf8ff"))))
+ '(coq-cheat-face ((t (:bold d))))
  
  '(fringe ((t (:background "grey95"))))
  '(gnus-cite-attribution-face ((t (:italic t))))
