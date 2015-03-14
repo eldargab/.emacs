@@ -114,6 +114,8 @@
 (define-key isearch-mode-map (kbd "s-f") 'isearch-repeat-forward)
 
 ;; eval, compilation and stuf
+(global-set-key (kbd "<f5>") 'eshell)
+
 (setq k-eval (kbd "<s-return>"))
 (setq k-compile (kbd "<f8>"))
 (setq k-docs (kbd "<f4>"))
