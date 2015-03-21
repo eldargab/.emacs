@@ -1,7 +1,7 @@
- (if (not (getenv "TERM_PROGRAM"))
-      (let ((path (shell-command-to-string
-              "$SHELL -cl \"printf %s \\\"\\\$PATH\\\"\"")))
-        (setenv "PATH" path)))
+(if (not (getenv "TERM_PROGRAM"))
+    (let ((path (shell-command-to-string
+                 "$SHELL -cl \"printf %s \\\"\\\$PATH\\\"\"")))
+      (setenv "PATH" path)))
 
 (require 'package)
 (add-to-list 'package-archives
@@ -130,7 +130,9 @@
          ,sel
        ,no-sel)))
 
-(global-set-key (kbd "s-p") 'indent-region)
+(global-set-key (kbd "s-p") '(lambda ()
+                               (interactive)
+                               (indent-region 0 (buffer-size))))
 
 ;; elisp
 (define-key emacs-lisp-mode-map k-eval (case-sel (eval-defun nil) (eval-region
@@ -150,7 +152,7 @@
       (save-excursion
         (if (proof-only-whitespace-to-locked-region-p)
             (proof-assert-next-command-interactive)
-           (proof-assert-until-point)))
+          (proof-assert-until-point)))
       (proof-maybe-follow-locked-end))))
 
 (add-hook 'coq-mode-hook
@@ -158,8 +160,6 @@
              (define-key coq-mode-map k-eval 'move-proof-to-point)
              (define-key coq-mode-map (kbd "<M-s-return>") 'proof-undo-last-successful-command)
              (define-key coq-mode-map k-compile 'coq-Compile)
-             (define-key coq-mode-map k-forward 'proof-assert-next-command-interactive)
-             (define-key coq-mode-map k-back 'proof-undo-last-successful-command)
              (define-key coq-mode-map k-jump-to-definition '(lambda ()
                                                               (interactive)
                                                               (execute-kbd-macro
