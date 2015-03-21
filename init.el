@@ -11,7 +11,8 @@
 
 (defvar my-packages
   '(slime
-    smart-tab))
+    smart-tab
+    idris-mode))
 
 (dolist (p my-packages)
   (when (not (package-installed-p p))
@@ -186,6 +187,16 @@
              (define-key slime-mode-map k-jump-back 'slime-pop-find-definition-stack)))
 
 (load-file (concat user-emacs-directory "eldar-theme.el"))
+
+;; IDRIS
+(setq idris-interpreter-path "/Users/eldar/Library/Haskell/bin/idris")
+
+(add-hook 'idris-mode-hook
+          '(lambda ()
+             (define-key idris-mode-map k-compile 'idris-load-file)
+             (define-key idris-mode-map k-docs 'idris-docs-at-point)
+             (define-key idris-mode-map (kbd "<s-f1>") 'idris-apropos)
+             )
 
 (custom-set-variables
  ;; custom-set-variables was added by Custom.
