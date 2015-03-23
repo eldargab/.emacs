@@ -9,6 +9,36 @@
  '(cursor ((t (:foregound "black"))))
  '(border ((t (:foregound "black"))))
 
+ ;; Stuff by me
+ '(font-lock-builtin-face ((t (nil))))
+ '(font-lock-comment-delimiter-face ((t (:italic t :slant italic :foreground "#888888"))))
+ '(font-lock-comment-face ((t (:italic t :foreground "#888888" :slant italic))))
+ '(font-lock-constant-face ((t nil)))
+ '(font-lock-doc-face ((t (:foreground "#888888"))))
+ '(font-lock-function-name-face ((t (:foreground "#990000" :bold t))))
+ '(font-lock-keyword-face ((t (:bold t :weight bold))))
+ '(font-lock-regexp-grouping-backslash ((t (:foreground "#dd1144"))))
+ '(font-lock-regexp-grouping-construct ((t (:foreground "#dd1144"))))
+ '(font-lock-string-face ((t (:foreground "#dd1144"))))
+ '(font-lock-type-face ((t (:bold t))))
+ '(font-lock-variable-name-face ((t nil)))
+
+ '(proof-tactics-name-face ((t nil)))
+ '(proof-tacticals-name-face ((t nil)))
+ '(proof-locked-face ((t (:background "#eaffea"))))
+ '(proof-queue-face ((t (:background "#eaf8ff"))))
+ '(coq-cheat-face ((t (:bold d))))
+
+ 
+ '(idris-semantic-data-face ((t nil)))
+ '(idris-semantic-function-face ((t (:foreground "#990000" :bold t))))
+ '(idris-semantic-type-face ((t (:foreground "#445588" :bold t))))
+ '(idris-semantic-bound-face ((t nil)))
+ '(idris-semantic-implicit-face ((t nil)))
+ '(idris-loaded-region-face ((t (:background "#eaffea"))))
+
+ ;; other things
+
  '(Man-overstrike-face ((t (:bold t))))
  '(Man-underline-face ((t (:underline t))))
  '(apropos-keybinding-face ((t (:underline t))))
@@ -79,25 +109,6 @@
  '(fixed ((t (:bold t))))
  '(flyspell-duplicate-face ((t (:foreground "Gold3" :bold t :underline t))))
  '(flyspell-incorrect-face ((t (:foreground "OrangeRed" :bold t :underline t))))
-
- '(font-lock-builtin-face ((t (nil))))
- '(font-lock-comment-delimiter-face ((t (:italic t :slant italic :foreground "#888888"))))
- '(font-lock-comment-face ((t (:italic t :foreground "#888888" :slant italic))))
- '(font-lock-constant-face ((t nil)))
- '(font-lock-doc-face ((t (:foreground "#888888"))))
- '(font-lock-function-name-face ((t (:foreground "#990000" :bold t))))
- '(font-lock-keyword-face ((t (:bold t :weight bold))))
- '(font-lock-regexp-grouping-backslash ((t (:foreground "#dd1144"))))
- '(font-lock-regexp-grouping-construct ((t (:foreground "#dd1144"))))
- '(font-lock-string-face ((t (:foreground "#dd1144"))))
- '(font-lock-type-face ((t (:bold t))))
- '(font-lock-variable-name-face ((t nil)))
-
- '(proof-tactics-name-face ((t nil)))
- '(proof-tacticals-name-face ((t nil)))
- '(proof-locked-face ((t (:background "#eaffea"))))
- '(proof-queue-face ((t (:background "#eaf8ff"))))
- '(coq-cheat-face ((t (:bold d))))
  
  '(fringe ((t (:background "grey95"))))
  '(gnus-cite-attribution-face ((t (:italic t))))

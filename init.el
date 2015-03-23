@@ -22,6 +22,17 @@
 
 (setq ido-enable-flex-matching t)
 
+(add-to-list 'ido-ignore-buffers "\\`*")
+(add-to-list 'ido-ignore-buffers "\.gz")
+
+(add-hook 'dired-mode-hook 'ensure-buffer-name-ends-in-slash)
+(defun ensure-buffer-name-ends-in-slash ()
+  "change buffer name to end with slash"
+  (let ((name (buffer-name)))
+    (if (not (string-match "/$" name))
+        (rename-buffer (concat name "/") t))))
+
+
 (when (fboundp 'tool-bar-mode)
   (tool-bar-mode -1))
 
