@@ -1,10 +1,7 @@
-
-\def\fontdefs{\psfamily{bsf}{r}{c}{b}{b}{ri}{ri}{ro}{bo}\def\mainmagstep{1200}}
 \input texinfo
 @c TODO: setting for configuring proof hidden regions.
 @c
-@c
-@c PG-adapting.texi,v 12.6 2012/05/29 14:53:59 tews Exp
+@c PG-adapting.texi,v 12.15 2015/03/13 19:34:11 da Exp
 @c
 @c NB: the first line of this file uses a non-standard TeXinfo
 @c hack to print in Serifa fonts.  It has no effect if you don't have
@@ -54,10 +51,10 @@
 @c        @ref{node}                without "see". Careful for info.
 
 
-@set version 4.2pre
-@set emacsversion 23.3
-@set last-update October 2011
-@set rcsid PG-adapting.texi,v 12.6 2012/05/29 14:53:59 tews Exp
+@set version 4.3pre
+@set emacsversion 24.4
+@set last-update April 2015
+@set rcsid PG-adapting.texi,v 12.15 2015/03/13 19:34:11 da Exp
 
 @dircategory Theorem proving
 @direntry
@@ -91,7 +88,7 @@ END-INFO-DIR-ENTRY
 
 @iftex
 @vskip 1cm
-@image{ProofGeneral}
+@image{ProofGeneral-image}
 @end iftex
 @author David Aspinall with T. Kleymann
 @page
@@ -364,7 +361,7 @@ file for the mode, which will be
 where @var{proof-home-directory} is the value of the
 variable @samp{@code{proof-home-directory}}.
 
-The default value is @code{((isar "Isabelle" "thy") (coq "Coq" "v" nil (".vo" ".glob")) (phox "PhoX" "phx") (hol-light "HOL Light" "ml") (pgshell "PG-Shell" "pgsh") (pgocaml "PG-OCaml" "pgml") (pghaskell "PG-Haskell" "pghci"))}.
+The default value is @code{((isar "Isabelle" "thy") (coq "Coq" "v" nil (".vo" ".glob")) (phox "PhoX" "phx") (pgshell "PG-Shell" "pgsh") (pgocaml "PG-OCaml" "pgml") (pghaskell "PG-Haskell" "pghci"))}.
 @end defopt
 
 
@@ -2298,8 +2295,7 @@ undoing, @code{proof-shell-retract-files-regexp} and
 urgent messages from proof process}.  To tell the prover about files
 handled with script management, use
  @code{proof-shell-inform-file-processed-cmd} and
- @code{proof-shell-inform-file-retracted-cmd}.  @xref{Proof shell
- commands}.
+ @code{proof-shell-inform-file-retracted-cmd}.  @xref{Proof shell commands}.
 If your prover does not allow re-opening of closed
 files, set @code{proof-cannot-reopen-processed-files} to @code{t}.
   Finally, set the flag @code{proof-auto-multiple-files} 
@@ -2515,10 +2511,43 @@ in @code{generic/proof-tree.el} as well as in the
 Prooftree program.
 
 @menu
+* A layered set of proof trees::
 * Prerequisites::
 * Proof-Tree Display Internals::
 * Configuring Prooftree for a New Proof Assistant::
 @end menu
+
+
+@node A layered set of proof trees
+@section A layered set of proof trees
+
+Prooftree can actually display more than one proof tree per
+proof. This is necessary to support the 
+@code{Grab Existential Variables} command in Coq. When the main
+goal has been proved, this command turns all open existential
+variables into new proof obligations. All these new proof
+obligations become root nodes for their own proof trees. When
+they all have been proved one can again grab the open existential
+variables...
+
+For each proof, Prooftree can therefore display several layers,
+where each layer can contain several (graphically) independent
+proof trees. The first layer contains one tree for the original
+proof goal. The second layer contains proof trees for goals that
+have been added to the proof after the first proof tree was
+completed. And so on.
+
+To organize the layers, Prooftree must identify those proof
+commands that add new goals to a proof.
+
+@c TEXI DOCSTRING MAGIC: proof-tree-new-layer-command-regexp
+@defvar proof-tree-new-layer-command-regexp 
+Regexp to match proof commands that add new goals to a proof.@*
+This regexp must match the command that turns the proof assistant
+into prover mode, which adds the initial goal to the proof. It
+must further match commands that add additional goals after all
+previous goals have been proved.
+@end defvar
 
 
 @node Prerequisites
@@ -2707,10 +2736,12 @@ communication between Proof General and Prooftree is almost one
 way only. Proof General sends proof status messages to Prooftree,
 from which Prooftree reconstructs the current proof status and
 the complete proof tree. Prooftree never requests additional
-information from Proof General. The only message that is sent
-from Prooftree to Proof General is a @code{stop-displaying}
-command, when the user closes the proof-tree display of the
-current proof.
+information from Proof General. 
+
+There are only a few messages that Prooftree sends to Proof
+General. These messages communicate user requests to Proof
+General, for instance, when the user selects the undo menu item,
+or when he closes the Prooftree window.
 
 The communication protocol is completely described in the
 @code{ocamldoc} documentation of @code{input.ml} in the Prooftree
@@ -2720,7 +2751,9 @@ is encoded in the message before the string itself.
 
 For debugging purposes Prooftree can save all input in a file.
 This feature can be turned on in the @code{Debug} tab of the
-Prooftree configuration dialog or with option @code{-tee}.
+Prooftree configuration dialog or with option @code{-tee}. The
+text that Prooftree sends to Proof General can be found in buffer
+@code{*proof-tree*}.
 
 
 @node Guards
@@ -2823,13 +2856,19 @@ assistant is already busy with the next item from
 @code{proof-action-list}. 
 
 @c TEXI DOCSTRING MAGIC: proof-tree-handle-delayed-output
-@defun proof-tree-handle-delayed-output cmd flags span
+@defun proof-tree-handle-delayed-output old-proof-marker cmd flags span
 Process delayed output for prooftree.@*
 This function is the main entry point of the Proof General
 prooftree support. It examines the delayed output in order to
 take appropriate actions and maintains the internal state.
 
-All arguments are (former) fields of the @samp{@code{proof-action-list}}
+The delayed output to handle is in the region
+[@code{proof-shell-delayed-output-start}, @code{proof-shell-delayed-output-end}].
+Urgent messages might be before that, following @var{old-proof-marker},
+which contains the position of @samp{@code{proof-marker}}, before the next
+command was sent to the proof assistant.
+
+All other arguments are (former) fields of the @samp{@code{proof-action-list}}
 entry that is now finally retired. @var{cmd} is the command, @var{flags} are
 the flags and @var{span} is the span.
 @end defun
@@ -3216,7 +3255,7 @@ in the @code{proof-assistants} setting.
 @c TEXI DOCSTRING MAGIC: proof-assistants
 @defopt proof-assistants 
 Choice of proof assistants to use with Proof General.@*
-A list of symbols chosen from: @code{'isar} @code{'coq} @code{'phox} @code{'hol-light} @code{'pgshell} @code{'pgocaml} @code{'pghaskell}.
+A list of symbols chosen from: @code{'isar} @code{'coq} @code{'phox} @code{'pgshell} @code{'pgocaml} @code{'pghaskell}.
 If nil, the default will be ALL available proof assistants.
 
 Each proof assistant defines its own instance of Proof General,
@@ -3814,6 +3853,35 @@ printing hints).
 See the functions @samp{@code{proof-start-queue}} and @samp{@code{proof-shell-exec-loop}}.
 @end defvar
 
+In Proof General 4.2 and earlier it was always the case that all
+items from the queue region were present in
+@code{proof-action-list}. Because of the new parallel background
+compilation for Coq, this is no longer the case. Prover specific
+code may now store items from the queue region somewhere else. To
+notify generic Proof General about this, it must set
+@code{proof-second-action-list-active} for the time where some
+queue items are missing from @code{proof-action-list}. In this
+case Proof General keeps the proof shell lock and the queue span
+even in case @code{proof-action-list} gets empty. Coq uses this
+feature to hold back Require commands and the following text
+until the asynchronous background compilation finishes.
+
+@c TEXI DOCSTRING MAGIC: proof-second-action-list-active
+@defvar proof-second-action-list-active 
+Signals that some items are waiting outside of @samp{@code{proof-action-list}}.@*
+If this is t it means that some items from the queue region are
+waiting for being processed in a place different from
+@samp{@code{proof-action-list}}. In this case Proof General must behave as if
+@samp{@code{proof-action-list}} would be non-empty, when it is, in fact,
+empty.
+
+This is used, for instance, for parallel background compilation
+for Coq: The Require command and the following items are not put
+into @samp{@code{proof-action-list}} and are stored somewhere else until the
+background compilation finishes. Then those items are put into
+@samp{@code{proof-action-list}} for getting processed.
+@end defvar
+
 @c TEXI DOCSTRING MAGIC: pg-subterm-anns-use-stack
 @defvar pg-subterm-anns-use-stack 
 Choice of syntax tree encoding for terms.
@@ -4200,15 +4268,25 @@ ends with text matching @samp{@code{proof-shell-eager-annotation-end}}.
 @end defun
 
 The main processing point which triggers other actions is
-@code{proof-shell-filter}.
+@code{proof-shell-filter}. It is called from
+@code{proof-shell-filter-wrapper}, which itself is called from an
+ordinary Emacs process filter inside the simplified @code{comint}
+library that is distributed with Proof General (in
+@code{lib/scomint.el}).
 
 @c TEXI DOCSTRING MAGIC: proof-shell-filter
-@defun proof-shell-filter str
+@defun proof-shell-filter 
 Master filter for the proof assistant shell-process.@*
 A function for @samp{@code{scomint-output-filter-functions}}.
 
-Deal with output @var{str} and issue new input from the queue.  This is
-an important internal function.
+Deal with output and issue new input from the queue. This is an
+important internal function. The output must be collected from
+@samp{@code{proof-shell-buffer}} for the following reason. This function
+might block inside @samp{@code{process-send-string}} when sending input to
+the proof assistant or to prooftree. In this case Emacs might
+call the process filter again while the previous instance is
+still running. @samp{@code{proof-shell-filter-wrapper}} detects and delays
+such calls but does not buffer the output.
 
 Handle urgent messages first.  As many as possible are processed,
 using the function @samp{@code{proof-shell-process-urgent-messages}}.
@@ -4266,8 +4344,22 @@ After processing the current output, the last step undertaken
 by the filter is to send the next command from the queue.
 @end defun
 
+@c TEXI DOCSTRING MAGIC: proof-shell-filter-wrapper
+@defun proof-shell-filter-wrapper str-do-not-use
+Wrapper for @samp{@code{proof-shell-filter}}, protecting against parallel calls.@*
+In Emacs a process filter function can be called while the same
+filter is currently running for the same process, for instance,
+when the filter bocks on I/O. This wrapper protects the main
+entry point, @samp{@code{proof-shell-filter}} against such parallel,
+overlapping calls.
 
-
+The argument @var{str-do-not-use} contains the most recent output, but
+is discarded. @samp{@code{proof-shell-filter}} collects the output from
+@samp{@code{proof-shell-buffer}} (where it is inserted by
+@samp{@code{scomint-output-filter}}), relieving this function from the task
+to buffer the output that arrives during parallel, overlapping
+calls.
+@end defun
 
 
 
@@ -4479,7 +4571,7 @@ Proof General.
 ;;
 ;; Author: David Aspinall <David.Aspinall@@ed.ac.uk>
 ;;
-;; PG-adapting.texi,v 12.6 2012/05/29 14:53:59 tews Exp
+;; PG-adapting.texi,v 12.15 2015/03/13 19:34:11 da Exp
 ;;
 ;; This is an alternative version of demoisa.el which uses the
 ;; proof-easy-config macro to do the work of declaring derived modes,
@@ -4541,7 +4633,7 @@ Proof General.
 ;;
 ;; Author: David Aspinall <David.Aspinall@@ed.ac.uk>
 ;;
-;; PG-adapting.texi,v 12.6 2012/05/29 14:53:59 tews Exp
+;; PG-adapting.texi,v 12.15 2015/03/13 19:34:11 da Exp
 ;;
 ;; =================================================================
 ;;

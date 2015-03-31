@@ -5,24 +5,22 @@
 ##
 ##  make		- do "compile" targets
 ##  make compile	- make .elc's 
+##  make check          - compile with warning flags enabled
 ##  make scripts	- edit paths to bash/perl/PGHOME in scripts
 ##  make install	- install into system directories
 ##  make clean		- return to clean source
 ##
 ## Edit the EMACS setting below or call with an explicit one, like this:
 ##
-##     make EMACS=emacs-23.0.60
-## or
 ##     make EMACS=/Applications/Emacs.app/Contents/MacOS/Emacs
 ##
-## Makefile,v 12.3 2012/03/05 18:52:34 tews Exp
+## Makefile,v 12.9 2015/03/13 14:16:33 da Exp
 ## 
 ###########################################################################
 
 # Set this according to your version of Emacs.
 # NB: this is also used to set default install path names below.
 EMACS=$(shell if [ -z "`which emacs`" ]; then echo "Emacs executable not found"; exit 1; else echo emacs; fi)
-# EMACS=/Applications/Emacs\ 23.4.app/Contents/MacOS/Emacs
 
 # We default to /usr rather than /usr/local because installs of
 # desktop and doc files under /usr/local are unlikely to work with
@@ -62,7 +60,8 @@ BIN_SCRIPTS = bin/proofgeneral lego/legotags coq/coqtags isar/isartags
 # only during compilation.  Another idea: put a function in proof-site
 # to output the compile-time load path and ELISP_DIRS so these are set
 # just in that one place.
-BYTECOMP = $(BATCHEMACS) -eval '(setq load-path (append (mapcar (lambda (d) (concat "${PWD}/" (symbol-name d))) (quote (${ELISP_DIRS}))) load-path))' -eval '(progn (require (quote bytecomp)) (require (quote mouse)) (require (quote tool-bar)) (require (quote fontset)) (setq byte-compile-warnings (remove (quote cl-functions) (remove (quote noruntime) byte-compile-warning-types))) (setq byte-compile-error-on-warn t))' -f batch-byte-compile
+ERROR_ON_WARN = nil
+BYTECOMP = $(BATCHEMACS) -eval '(setq load-path (append (mapcar (lambda (d) (concat "${PWD}/" (symbol-name d))) (quote (${ELISP_DIRS}))) load-path))' -eval '(progn (require (quote bytecomp)) (require (quote mouse)) (require (quote tool-bar)) (require (quote fontset)) (setq byte-compile-warnings (remove (quote cl-functions) (remove (quote noruntime) byte-compile-warning-types))) (setq byte-compile-error-on-warn $(ERROR_ON_WARN)))' -f batch-byte-compile
 EL=$(shell for f in $(ELISP_DIRS); do ls $$f/*.el; done)
 ELC=$(EL:.el=.elc)
 
@@ -78,11 +77,33 @@ FORCE:
 ## Compiling can show up errors in the code, but be wary of fixing obsoletion
 ## or argument call warnings unless they're valid for all supported Emacsen.
 ##
+## The compile target displays errors as warnings only for compatibility 
+## with newer Emacs versions (see ticket #458).
+##
 compile: $(EL) 
 	@echo "****************************************************************"
 	@echo " Byte compiling... "
 	@echo "****************************************************************"
 	$(MAKE) elc
+	@echo "****************************************************************"
+	@echo " Finished."
+	@echo "****************************************************************"
+
+## 
+## compile : byte compile all lisp files
+##
+## Compiling can show up errors in the code, but be wary of fixing obsoletion
+## or argument call warnings unless they're valid for all supported Emacsen.
+##
+## The check target aborts compilation on any byte-compiler warning.
+## Compile with this target once before commiting your changes to 
+## the repository.
+##
+check: $(EL) 
+	@echo "****************************************************************"
+	@echo " Byte compiling... "
+	@echo "****************************************************************"
+	$(MAKE) ERROR_ON_WARN=t elc
 	@echo "****************************************************************"
 	@echo " Finished."
 	@echo "****************************************************************"
@@ -113,7 +134,7 @@ all:	compile
 ## Remove generated targets
 ##
 clean:	cleanpgscripts
-	rm -f $(ELC) *~ */*~ .\#* */.\#* */.autotest.log */.profile.log
+	rm -f $(ELC) .\#* */.\#* */.autotest.log */.profile.log
 	(cd doc; $(MAKE) clean)
 
 distclean: clean

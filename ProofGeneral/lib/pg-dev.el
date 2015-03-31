@@ -4,7 +4,7 @@
 ;; Author:      David Aspinall <David.Aspinall@ed.ac.uk> and others
 ;; License:     GPL (GNU GENERAL PUBLIC LICENSE)
 ;;
-;; pg-dev.el,v 12.2 2012/08/30 14:30:23 monnier Exp
+;; pg-dev.el,v 12.3 2015/03/05 09:29:49 da Exp
  ;;
 ;;; Commentary:
 ;;
@@ -31,7 +31,7 @@
 (add-hook 'emacs-lisp-mode-hook
 	  (lambda ()
             (checkdoc-minor-mode 1)
-            (turn-on-eldoc-mode)
+            (eldoc-mode 1)
             (flyspell-prog-mode)
             (customize-set-variable 'whitespace-action '(cleanup))
             (define-key emacs-lisp-mode-map [(control c)(control c)]

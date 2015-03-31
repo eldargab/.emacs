@@ -4,7 +4,7 @@
 ;; Authors:   Hendrik Tews
 ;; License:   GPL (GNU GENERAL PUBLIC LICENSE)
 ;;
-;; proof-tree.el,v 12.4 2012/09/12 12:33:13 tews Exp
+;; proof-tree.el,v 12.8 2013/01/21 14:13:56 tews Exp
 ;;
 ;;; Commentary:
 ;;
@@ -32,7 +32,7 @@
 ;; the middle of a proof. Therefore, if the user wants to start the
 ;; proof-tree display in the middle of the proof, it is necessary to
 ;; retract to the start of the proof and then to reassert to the
-;; previous end of the locked region. To achieve this one has to call
+;; previous end of the locked region. To achieve this, one has to call
 ;; `accept-process-output' at suitable points to let Proof General
 ;; process the `proof-action-list'.
 ;; 
@@ -73,7 +73,16 @@
 ;; the next real proof command runs. For Coq this needs to be done for
 ;; newly generated subgoals and for goals that contain an existential
 ;; variable that got instantiated in the last proof step.
-
+;;
+;; Actually, for every proof, Prooftree can display a set of disjunct
+;; proof trees, which are organized into layers. More than one proof
+;; tree in more than one layer is needed to support the Grap
+;; Existential Variables command in Coq. There is one proof tree in
+;; the first layer for the original goal. The second layer contains
+;; all the goals that the first Grab Existential Variables command
+;; created from uninstantiated existential variabes in the main proof.
+;; The third layer contains the goals that the second Grap Existential
+;; Variables created.
 
 ;;; Code:
 
@@ -144,6 +153,15 @@ Coq. Leave at nil if there are no cheating commands."
   :type '(choice regexp (const nil))
   :group 'proof-tree-internals)
 
+(defcustom proof-tree-new-layer-command-regexp nil
+  "Regexp to match proof commands that add new goals to a proof.
+This regexp must match the command that turns the proof assistant
+into prover mode, which adds the initial goal to the proof. It
+must further match commands that add additional goals after all
+previous goals have been proved."
+  :type 'regexp
+  :group 'proof-tree-internals)
+
 (defcustom proof-tree-current-goal-regexp nil
   "Regexp to match the current goal and its ID.
 The regexp is matched against the output of the proof assistant
@@ -211,8 +229,13 @@ the state display expands to the end of the prover output."
   :type '(choice regexp (const nil))
   :group 'proof-tree-internals)
 
-(defcustom proof-tree-proof-finished-regexp nil
-  "Regexp to match the no-more-subgoals message."
+(defcustom proof-tree-branch-finished-regexp nil
+  "Regexp to recognize that the current branch has been finished.
+This must match in precisely the following cases:
+- The current branch has been finished but there is no current
+  open subgoal because the prover has not switched to the next
+  subgoal.
+- The last open goal has been proved. "
   :type 'regexp
   :group 'proof-tree-internals)
 
@@ -282,6 +305,16 @@ proof. If there is no such proof, this function must return nil."
   :type 'function
   :group 'proof-tree-internals)
 
+(defcustom proof-tree-find-undo-position nil
+  "Proof assistant specific function for finding the point to undo to.
+This function is used to convert the state number, which comes
+with an undo command from Prooftree, into a point position for
+`proof-retract-until-point'. This function is called in the
+current scripting buffer with the state number as argument. It
+must return a buffer position."
+  :type 'function
+  :group 'proof-tree-internals)
+
 (defcustom proof-tree-urgent-action-hook ()
   "Normal hook for prooftree actions that cannot be delayed.
 This hook is called (indirectly) from inside
@@ -323,8 +356,11 @@ Controlled by `proof-tree-external-display-toggle'.")
 (defconst proof-tree-process-name "proof-tree"
   "Name of the prooftree process for Emacs lisp.")
 
-(defconst proof-tree-process-buffer
+(defconst proof-tree-process-buffer-name
   (concat "*" proof-tree-process-name "*")
+  "Name of the buffer for stdout and stderr of the prooftree process.")
+
+(defvar proof-tree-process-buffer nil
   "Buffer for stdout and stderr of the prooftree process.")
 
 (defconst proof-tree-emacs-exec-regexp
@@ -375,6 +411,17 @@ Needed for undo.")
 ;; process filter function that receives prooftree output
 ;;
 
+(defvar proof-tree-output-marker nil
+  "Marker in `proof-tree-process-buffer' pointing to new output.
+This marker points to the next piece of output that needs to get processed.")
+
+(defvar proof-tree-filter-continuation nil
+  "Continuation when `proof-tree-process-filter' stops early.
+A function that handles a command from Prooftee might fail
+because not all data from Prooftee has yet arrived. In this case
+the continuation is stored in this variable and will be called
+from `proof-tree-process-filter' when more output arrives.")
+
 (defun proof-tree-stop-external-display ()
   "Prooftree callback for the command \"stop-displaying\"."
   (if proof-tree-current-proof
@@ -382,13 +429,56 @@ Needed for undo.")
   (proof-tree-quit-proof)
   (setq proof-tree-external-display nil))
 
+(defun proof-tree-handle-proof-tree-undo (data)
+  "Handle an undo command that arrives from prooftree."
+  (let ((undo-state (string-to-number data)))
+    (if (and (integerp undo-state) (> undo-state 0))
+	(with-current-buffer proof-script-buffer
+	  (goto-char (funcall proof-tree-find-undo-position undo-state))
+	  (proof-retract-until-point))
+      (display-warning
+       '(proof-general proof-tree)
+       "Prooftree sent an invalid state for undo"
+       :warning))))
 
-(defun proof-tree-insert-output (string)
-  "Insert output or a message into the prooftree process buffer."
-  (with-current-buffer (get-buffer-create proof-tree-process-buffer)
+(defun proof-tree-insert-script (data)
+  "Handle an insert-command command from Prooftree."
+  (let ((command-length (string-to-number data))) 
+    (if (and (integerp command-length) (> command-length 0))
+	(condition-case nil
+	    (progn
+	      (insert
+	       (with-current-buffer proof-tree-process-buffer
+		 (buffer-substring
+		  proof-tree-output-marker
+		  (+ proof-tree-output-marker command-length))))
+	      ;; received all text -> advance marker
+	      (set-marker proof-tree-output-marker
+			  (+ proof-tree-output-marker command-length)
+			  proof-tree-process-buffer))
+	  (args-out-of-range
+	   ;; buffer substring failed because the end position is not
+	   ;; there yet
+	   ;; need to try again later
+	   (setq proof-tree-filter-continuation
+		 `(lambda () (proof-tree-insert-script ,data)))))
+      (display-warning
+       '(proof-general proof-tree)
+       "Prooftree sent an invalid data length for insert-command"
+       :warning))))
+
+(defun proof-tree-insert-output (string &optional message)
+  "Insert output or a message into the prooftree process buffer.
+If MESSAGE is t, a message is inserted and
+`proof-tree-output-marker' is not touched. Otherwise, if
+`proof-tree-output-marker' is nil, it is set to point to the
+newly arrived output."
+  (with-current-buffer proof-tree-process-buffer
     (let ((moving (= (point) (point-max))))
       (save-excursion
-	;; Insert the text, advancing the process marker.
+	(when (and (not message) (not proof-tree-output-marker))
+	  (setq proof-tree-output-marker (point-max-marker))
+	  (set-marker-insertion-type proof-tree-output-marker nil))
 	(goto-char (point-max))
 	(insert string))
       (if moving (goto-char (point-max))))))
@@ -397,23 +487,57 @@ Needed for undo.")
 (defun proof-tree-process-filter (proc string)
   "Output filter for prooftree.
 Records the output in the prooftree process buffer and checks for
-callback function requests."
+callback function requests. Such callback functions might fail
+because the complete output from Prooftree has not arrived yet.
+In this case they store a continuation function in
+`proof-tree-filter-continuation that will be called when the next
+piece of output arrives. `proof-tree-output-marker' points to the
+next piece of Prooftree output that needs to get processed. If
+everything is processed, the marker is deleted and
+`proof-tree-insert-output' sets it again for the next output."
   (proof-tree-insert-output string)
-  (save-excursion
-    (let ((start 0))
-      (while (proof-string-match proof-tree-emacs-exec-regexp string start)
-	(let ((end (match-end 0))
-	      (cmd (match-string 1 string))
-	      (data (match-string 2 string)))
+  (let ((continuation proof-tree-filter-continuation)
+	command-found command data)
+    ;; clear continuation
+    (setq proof-tree-filter-continuation nil)
+    ;; call continuation -- this might set a continuation again
+    (when continuation
+      (funcall continuation))
+    (unless proof-tree-filter-continuation
+      ;; there was no continuation or the continuation finished successfully
+      ;; need to look for command after output marker
+      (while (< proof-tree-output-marker
+		(1+ (buffer-size proof-tree-process-buffer)))
+	;; there is something after the output marker
+	(with-current-buffer proof-tree-process-buffer
+	  (save-excursion
+	    (goto-char proof-tree-output-marker)
+	    (setq command-found
+		  (proof-re-search-forward proof-tree-emacs-exec-regexp nil t))
+	    (if command-found
+		(progn
+		  (setq command (match-string 1)
+			data (match-string 2))
+		  (set-marker proof-tree-output-marker (point)))
+	      (set-marker proof-tree-output-marker (point-max)))))
+	(when command-found
 	  (cond
-	   ((equal cmd "stop-displaying")
+	   ((equal command "stop-displaying")
 	    (proof-tree-stop-external-display))
+	   ((equal command "undo")
+	    (proof-tree-handle-proof-tree-undo data))
+	   ((equal command "insert-proof-script")
+	    (proof-tree-insert-script data))
 	   (t
 	    (display-warning
 	     '(proof-general proof-tree)
-	     (format "Unknown prooftree command %s" cmd)
-	     :warning)))
-	  (setq start end))))))
+	     (format "Unknown prooftree command %s" command)
+	     :warning))))))
+    ;; one of the handling functions might have set a continuation
+    ;; if not we clear the output marker
+    (unless proof-tree-filter-continuation
+      (set-marker proof-tree-output-marker nil)
+      (setq proof-tree-output-marker nil))))
 
 
 ;;
@@ -423,7 +547,7 @@ callback function requests."
 (defun proof-tree-process-sentinel (proc event)
   "Sentinel for prooftee.
 Runs on process status changes and cleans up when prooftree dies."
-  (proof-tree-insert-output (concat "\nsubprocess status change: " event))
+  (proof-tree-insert-output (concat "\nsubprocess status change: " event) t)
   (unless (proof-tree-is-running)
     (proof-tree-stop-external-display)
     (setq proof-tree-process nil)))
@@ -433,12 +557,20 @@ Runs on process status changes and cleans up when prooftree dies."
 Does also initialize the communication channel and some internal
 variables."
   (let ((old-proof-tree (get-process proof-tree-process-name)))
+    ;; reset output marker
+    (when proof-tree-output-marker
+      (set-marker proof-tree-output-marker nil)
+      (setq proof-tree-output-marker nil))
+    ;; create buffer
+    (setq proof-tree-process-buffer
+	  (get-buffer-create proof-tree-process-buffer-name))
     ;; first clean up any old processes
     (when old-proof-tree
       (delete-process old-proof-tree)
-      (proof-tree-insert-output "\n\nProcess terminated by Proof General\n\n"))
+      (proof-tree-insert-output
+       "\n\nProcess terminated by Proof General\n\n" t))
     ;; now start the new process
-    (proof-tree-insert-output "\nStart new prooftree process\n\n")
+    (proof-tree-insert-output "\nStart new prooftree process\n\n" t)
     (setq proof-tree-process
 	  (apply 'start-process
 	   proof-tree-process-name
@@ -472,7 +604,7 @@ variables."
 ;; Low-level communication primitives
 ;;
 
-(defconst proof-tree-protocol-version 2
+(defconst proof-tree-protocol-version 3
   "Version of the communication protocol between Proof General and Prooftree.
 Must be increased if one of the low-level communication
 primitives is changed.")
@@ -500,21 +632,23 @@ DATA as data sections to Prooftree."
    ()))
 
 (defun proof-tree-send-goal-state (state proof-name command-string cheated-flag
-				   current-sequent-id current-sequent-text
-				   additional-sequent-ids existential-info)
+				   layer-flag current-sequent-id
+				   current-sequent-text additional-sequent-ids
+				   existential-info)
   "Send the current goal state to prooftree."
   ;; (message "PTSGS id %s sequent %s ex-info %s"
   ;; 	   current-sequent-id current-sequent-text existential-info)
   (let* ((add-id-string (mapconcat 'identity additional-sequent-ids " "))
 	 (second-line
 	  (format
-	   (concat "current-goals state %d current-sequent %s %s "
+	   (concat "current-goals state %d current-sequent %s %s %s "
 		   "proof-name-bytes %d "
 		   "command-bytes %d sequent-text-bytes %d "
 		   "additional-id-bytes %d existential-bytes %d")
 	   state
 	   current-sequent-id
 	   (if cheated-flag "cheated" "not-cheated")
+	   (if layer-flag "new-layer" "current-layer")
 	   (1+ (string-bytes proof-name))
 	   (1+ (string-bytes command-string))
 	   (1+ (string-bytes current-sequent-text))
@@ -547,12 +681,12 @@ DATA as data sections to Prooftree."
 		 (1+ (string-bytes proof-name)))))
     (proof-tree-send-message second-line (list proof-name))))
 
-(defun proof-tree-send-proof-finished (state proof-name cmd-string
+(defun proof-tree-send-branch-finished (state proof-name cmd-string
 					     cheated-flag existential-info)
-  "Send proof-finished to prooftree."
+  "Send branch-finished to prooftree."
   (proof-tree-send-message
    (format
-    (concat "proof-finished state %d %s proof-name-bytes %d command-bytes %d "
+    (concat "branch-finished state %d %s proof-name-bytes %d command-bytes %d "
 	    "existential-bytes %d")
     state
     (if cheated-flag "cheated" "not-cheated")
@@ -820,6 +954,7 @@ This function cuts out the text between
 output, including the matches of these regular expressions. If
 the start regexp is nil, the empty string is returned. If the end
 regexp is nil, the match expands to the end of the prover output."
+  (goto-char start)
   (if (and proof-tree-existentials-state-start-regexp
 	   (proof-re-search-forward proof-tree-existentials-state-start-regexp
 				    end t))
@@ -832,7 +967,7 @@ regexp is nil, the match expands to the end of the prover output."
 	(buffer-substring-no-properties start end))
     ""))
 
-(defun proof-tree-handle-proof-progress (cmd-string proof-info)
+(defun proof-tree-handle-proof-progress (old-proof-marker cmd-string proof-info)
   "Send CMD-STRING and goals in delayed output to prooftree.
 This function is called if there is some real progress in a
 proof. This function sends the current state, the current goal
@@ -840,9 +975,13 @@ and the list of additional open subgoals to Prooftree. Prooftree
 will sort out the rest.
 
 The delayed output is in the region
-\[proof-shell-delayed-output-start, proof-shell-delayed-output-end]."
-  ;; (message "PTHPO cmd |%s| info %s flags %s start %s end %s"
+\[proof-shell-delayed-output-start, proof-shell-delayed-output-end].
+Urgent messages might be before that, following OLD-PROOF-MARKER,
+which contains the position of `proof-marker', before the next
+command was sent to the proof assistant."
+  ;; (message "PTHPO cmd |%s| info %s flags %s proof-marker %s start %s end %s"
   ;; 	   cmd proof-info flags
+  ;; 	   old-proof-marker
   ;; 	   proof-shell-delayed-output-start
   ;; 	   proof-shell-delayed-output-end)
   (let* ((start proof-shell-delayed-output-start)
@@ -852,36 +991,38 @@ The delayed output is in the region
 	 (cheated-flag
 	  (and proof-tree-cheating-regexp
 	       (proof-string-match proof-tree-cheating-regexp cmd-string)))
-	 (current-goals (proof-tree-extract-goals start end))
-	 (existential-info
-	  (proof-tree-extract-existential-info start end)))
-    (if current-goals
+	 current-goals)
+    ;; Check first for special cases, because Coq's output for finished
+    ;; branches is almost identical to proper goals.
+    (goto-char old-proof-marker)
+    (if (proof-re-search-forward proof-tree-branch-finished-regexp end t)
+	(proof-tree-send-branch-finished
+	 proof-state proof-name cmd-string cheated-flag
+	 (proof-tree-extract-existential-info start end))
+      (goto-char start)
+      (setq current-goals (proof-tree-extract-goals start end))
+      (when current-goals
 	(let ((current-sequent-id (car current-goals))
 	      (current-sequent-text (nth 1 current-goals))
 	      ;; nth 2 current-goals  contains the  additional ID's
-	      )
+	      (layer-flag
+	       (and proof-tree-new-layer-command-regexp
+		    (proof-string-match proof-tree-new-layer-command-regexp
+					cmd-string))))
 	  ;; send all to prooftree
 	  (proof-tree-send-goal-state
 	   proof-state proof-name cmd-string
-	   cheated-flag
+	   cheated-flag layer-flag
 	   current-sequent-id
 	   current-sequent-text
 	   (nth 2 current-goals)
-	   existential-info)
+	   (proof-tree-extract-existential-info start end))
 	  ;; put current sequent into hash (if it is not there yet)
 	  (unless (gethash current-sequent-id proof-tree-sequent-hash)
 	    (puthash current-sequent-id proof-state proof-tree-sequent-hash))
 	  (proof-tree-register-existentials proof-state
 					    current-sequent-id
-					    current-sequent-text))
-      
-      ;; no current goal found, maybe the proof has been finished?
-      (goto-char start)
-      (if (proof-re-search-forward proof-tree-proof-finished-regexp end t)
-	  (progn
-	    (proof-tree-send-proof-finished
-	     proof-state proof-name cmd-string
-	     cheated-flag existential-info))))))
+					    current-sequent-text))))))
 
 (defun proof-tree-handle-navigation (proof-info)
   "Handle a navigation command.
@@ -901,7 +1042,7 @@ The delayed output of the navigation command is in the region
 	  (proof-tree-send-switch-goal proof-state proof-name current-id)))))
 
 
-(defun proof-tree-handle-proof-command (cmd proof-info)
+(defun proof-tree-handle-proof-command (old-proof-marker cmd proof-info)
   "Display current goal in prooftree unless CMD should be ignored."
   ;; (message "PTHPC")
   (let ((proof-state (car proof-info))
@@ -913,7 +1054,8 @@ The delayed output of the navigation command is in the region
 	       (proof-string-match proof-tree-navigation-command-regexp
 				   cmd-string))
 	  (proof-tree-handle-navigation proof-info)
-	(proof-tree-handle-proof-progress cmd-string proof-info)))
+	(proof-tree-handle-proof-progress old-proof-marker
+					  cmd-string proof-info)))
     (setq proof-tree-last-state (car proof-info))))
     
 (defun proof-tree-handle-undo (proof-info)
@@ -989,13 +1131,19 @@ The delayed output is in the region
 						  sequent-text)))))))
 
 
-(defun proof-tree-handle-delayed-output (cmd flags span)
+(defun proof-tree-handle-delayed-output (old-proof-marker cmd flags span)
   "Process delayed output for prooftree.
 This function is the main entry point of the Proof General
 prooftree support. It examines the delayed output in order to
 take appropriate actions and maintains the internal state.
 
-All arguments are (former) fields of the `proof-action-list'
+The delayed output to handle is in the region
+\[proof-shell-delayed-output-start, proof-shell-delayed-output-end].
+Urgent messages might be before that, following OLD-PROOF-MARKER,
+which contains the position of `proof-marker', before the next
+command was sent to the proof assistant.
+
+All other arguments are (former) fields of the `proof-action-list'
 entry that is now finally retired. CMD is the command, FLAGS are
 the flags and SPAN is the span."
   ;; (message "PTHDO cmd %s flags %s span %s-%s" cmd flags
@@ -1035,7 +1183,8 @@ the flags and SPAN is the span."
 	  (when current-proof-name
 	    ;; we are inside a proof: display something
 	    (proof-tree-ensure-running)
-	    (proof-tree-handle-proof-command cmd proof-info)))))))
+	    (proof-tree-handle-proof-command old-proof-marker
+					     cmd proof-info)))))))
 
 
 ;;

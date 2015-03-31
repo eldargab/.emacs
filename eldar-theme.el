@@ -29,9 +29,9 @@
  '(proof-queue-face ((t (:background "#eaf8ff"))))
  '(coq-cheat-face ((t (:bold d))))
 
- 
+ ;; '(idris-definition-face ((t nil)))
  '(idris-semantic-data-face ((t nil)))
- '(idris-semantic-function-face ((t (:foreground "#990000" :bold t))))
+ '(idris-semantic-function-face ((t nil)))
  '(idris-semantic-type-face ((t (:foreground "#445588" :bold t))))
  '(idris-semantic-bound-face ((t nil)))
  '(idris-semantic-implicit-face ((t nil)))

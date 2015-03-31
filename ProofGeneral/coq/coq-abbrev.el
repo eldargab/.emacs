@@ -75,6 +75,7 @@
   (coq-install-abbrevs))
 ;;;;;
 
+
 ;; The coq menu partly built from tables
 
 ;; Common part (scrit, response and goals buffers)
@@ -131,6 +132,7 @@
     ["Print..." coq-Print :help "With prefix arg (C-u): Set Printing All first"]
     ["Check..." coq-Check :help "With prefix arg (C-u): Set Printing All first"]
     ["About..." coq-About :help "With prefix arg (C-u): Set Printing All first"]
+    ["Other..." coq-query]
     [ "Store Response" proof-store-response-win :help "Stores the content of response buffer in a dedicated buffer"]
     [ "Store Goal" proof-store-goals-win  :help "Stores the content of goals buffer in a dedicated buffer"]
     ("OTHER QUERIES"
@@ -153,7 +155,8 @@
      ["About...(show all)" coq-About-with-all t]
      ["Search..." coq-SearchConstant t]
      ["SearchRewrite..." coq-SearchRewrite t]
-     ["SearchAbout..." coq-SearchAbout t]
+     ["SearchAbout (hiding principles)..." coq-SearchAbout t]
+     ["SearchAbout..." coq-SearchAbout-all t]
      ["SearchPattern..." coq-SearchIsos t]
      ["Locate constant..." coq-LocateConstant t]
      ["Locate Library..." coq-LocateLibrary t]
@@ -174,7 +177,10 @@
      ["Set Printing Coercions" coq-set-printing-coercions t]
      ["Unset Printing Coercions" coq-unset-printing-coercions t]
      ["Set Printing Wildcards" coq-set-printing-wildcards t]
-     ["Unset Printing Wildcards" coq-unset-printing-wildcards t])))
+     ["Unset Printing Wildcards" coq-unset-printing-wildcards t])
+    ""
+    ["ML4PG" (coq-activate-ml4pg) :help "Activates ML4PG: machine-learning methods for Proof General"]
+    ))
 
 (defpgdefault menu-entries
   (append coq-menu-common-entries
@@ -206,6 +212,10 @@
       :selected (and (boundp 'abbrev-mode) abbrev-mode)])
     ""
     ("COQ PROG (ARGS)"
+     ["Use project file" coq-toggle-use-project-file
+      :style toggle
+      :selected (and (boundp 'coq-use-project-file) coq-use-project-file)
+      ]
      ["Set Coq Prog *persistently*" coq-ask-insert-coq-prog-name t]
      ["help" coq-local-vars-list-show-doc t]
      ["Compile" coq-Compile t]))))

@@ -1,4 +1,3 @@
-
 ;;; pg-user.el --- User level commands for Proof General
 ;;
 ;; Copyright (C) 2000-2010 LFCS Edinburgh.
@@ -6,7 +5,7 @@
 ;; Author:     David Aspinall and others
 ;; License:    GPL (GNU GENERAL PUBLIC LICENSE)
 ;;
-;; pg-user.el,v 12.5 2012/08/14 10:37:25 da Exp
+;; pg-user.el,v 12.8 2015/03/13 14:50:05 da Exp
 ;;
 ;;
 ;;; Commentary:
@@ -506,9 +505,12 @@ This is intended as a value for `proof-activate-scripting-hook'"
 			       proof-terminal-string)))))))
 
 ;;;###autoload
-(defun proof-electric-terminator-enable ()
+(defun proof-electric-terminator-enable (&optional arg)
   "Ensure modeline update to display new value for electric terminator.
-This a function is called by the custom-set property 'proof-set-value."
+This a function is called by the custom-set property 'proof-set-value.
+It can also be used as a minor mode function: with ARG, turn on iff ARG>0"
+  (unless (null arg)
+    (setq proof-electric-terminator-enable (> (prefix-numeric-value arg) 0)))
   (force-mode-line-update))
 
 (proof-deftoggle proof-electric-terminator-enable
@@ -875,9 +877,9 @@ a popup with the information in it."
 	   (lambda (x)
 	     (save-excursion
 	       (let ((idspan (span-make s e)))
-	       (span-set-property idspan 'priority 90) ; highest
-	       (span-set-property idspan 'help-echo
-				  (pg-last-output-displayform))))))))))
+                 ;; (span-set-property idspan 'priority 90) ; highest
+                 (span-set-property idspan 'help-echo
+                                    (pg-last-output-displayform))))))))))
 
 (defvar proof-query-identifier-history nil
   "History for `proof-query-identifier'.")
@@ -920,6 +922,7 @@ If CALLBACK is set, we invoke that when the command completes."
 ;; Imenu and Speedbar
 ;;
 
+(declare-function speedbar-add-supported-extension "speedbar")
 (eval-after-load "speedbar"
   '(and proof-assistant-symbol ;; *should* be set by now
 	(speedbar-add-supported-extension

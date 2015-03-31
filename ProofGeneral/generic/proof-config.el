@@ -4,7 +4,7 @@
 ;; Author:      David Aspinall <David.Aspinall@ed.ac.uk> and others
 ;; License:     GPL (GNU GENERAL PUBLIC LICENSE)
 ;;
-;; proof-config.el,v 12.7 2012/09/14 15:35:23 da Exp
+;; proof-config.el,v 12.10 2015/02/04 10:42:14 pier Exp
 ;;
 ;;; Commentary:
 ;;
@@ -752,6 +752,16 @@ Elisp errors will be trapped when evaluating; set
   :type 'string
   :group 'proof-script)
 
+(defcustom proof-script-insert-newlines t
+  "if non-nil inserts a newline between each message in response buffer."
+  :type 'boolean
+  :group 'proof-script)
+
+(defcustom proof-script-color-error-messages t
+  "if non-nil error messages will be globally colored with corresponding face.
+If prover mode has a better coloring mechanism for errors, set this to nil."
+  :type 'boolean
+  :group 'proof-script)
 
 (defcustom proof-script-font-lock-keywords nil
   "Value of `font-lock-keywords' used to fontify proof scripts.
@@ -1630,6 +1640,17 @@ error/interrupt.
 
 Remark: This hook is called from shell buffer.  If you want to do
 something in scripting buffer, `save-excursion' and/or `set-buffer'."
+  :type '(repeat function)
+  :group 'proof-shell)
+
+(defcustom proof-shell-signal-interrupt-hook nil
+  "Run when the user tries to interrupt the prover.
+This hook is run inside `proof-interrupt-process' when the user
+tries to interrupt the proof process. It is therefore run earlier
+than `proof-shell-handle-error-or-interrupt-hook', which runs
+when the interrupt is acknowledged inside `proof-shell-exec-loop'.
+
+This hook also runs when the proof assistent is killed."
   :type '(repeat function)
   :group 'proof-shell)
 

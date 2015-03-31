@@ -5,7 +5,7 @@
 ##
 ## Maintainer:  Proof General maintainer <da+proofgen@inf.ed.ac.uk>
 ##
-## Makefile.doc,v 12.2 2012/01/03 14:43:05 da Exp
+## Makefile.doc,v 12.3 2013/01/15 14:42:34 tews Exp
 ## 
 ###########################################################################
 ##
@@ -90,13 +90,13 @@ info:   $(DOCNAME).info
 CLEANTARGS:=$(DOCNAME).cp $(DOCNAME).fn $(DOCNAME).vr $(DOCNAME).tp $(DOCNAME).ky $(DOCNAME).kys $(DOCNAME).pg $(DOCNAME).fns $(DOCNAME).vrs $(DOCNAME).cps $(DOCNAME).aux $(DOCNAME).log $(DOCNAME).cp $(DOCNAME).cp0 $(DOCNAME).toc
 clean:
 	rm -f $(CLEANTARGS)
-	rm -f *~
 
 ##
 ## distclean: Remove documentation targets
 ##
 distclean:   clean
 	rm -rf $(DOCNAME).info* $(DOCNAME).pdf $(DOCNAME)
+	rm -f *~
 
 ##
 ## texi: update magic comments in texi from docstrings in code.

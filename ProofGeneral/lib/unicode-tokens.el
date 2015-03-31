@@ -4,7 +4,7 @@
 ;; Author:    David Aspinall <David.Aspinall@ed.ac.uk>
 ;; License:     GPL (GNU GENERAL PUBLIC LICENSE)
 ;;
-;; unicode-tokens.el,v 12.3 2012/09/04 20:57:54 da Exp
+;; unicode-tokens.el,v 12.4 2015/03/13 15:16:04 da Exp
 ;;
 ;; This is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -936,7 +936,7 @@ Starts from point."
 				(forward-line -1) (point))
 			      (point))
 			     'face
-			     '(background-color . "gray90")))
+			     'header-line))
 	    (insert " "))
 	  (incf count)
 	  (if (null toks)
@@ -963,7 +963,7 @@ Starts from point."
 	  (if (setq grey (not grey))
 	      (overlay-put (make-overlay start (point))
 			   'face
-			   '(background-color . "gray90"))))))))
+			   'header-line)))))))
 
 (defalias 'unicode-tokens-list-unicode-chars 'unicode-chars-list-chars)
 

@@ -1,12 +1,7 @@
-\def\fontdefs{\psfamily{bsf}{r}{c}{b}{b}{ri}{ri}{ro}{bo}\def\mainmagstep{1200}}
 \input texinfo
 @c
-@c ProofGeneral.texi,v 12.10 2012/09/14 10:38:18 tews Exp
+@c ProofGeneral.texi,v 12.25 2015/03/13 19:34:11 da Exp
 @c
-@c NB: the first line of this file uses a non-standard TeXinfo
-@c hack to print in Serifa fonts.  It has no effect if you don't have
-@c my hacked version of TeXinfo - da.
-
 @c
 @c TODO:  
 @c   MMM support, Theorem dependencies, history in script and response,
@@ -62,10 +57,10 @@
 @c        @ref{node}                without "see". Careful for info.
 @c
 
-@set version 4.2pre
-@set emacsversion 23.3
-@set last-update January 2012
-@set rcsid ProofGeneral.texi,v 12.10 2012/09/14 10:38:18 tews Exp
+@set version 4.3pre
+@set emacsversion 24.4
+@set last-update April 2015
+@set rcsid ProofGeneral.texi,v 12.25 2015/03/13 19:34:11 da Exp
 
 @dircategory Theorem proving
 @direntry
@@ -98,7 +93,7 @@
 
 @iftex
 @vskip 1cm
-@image{ProofGeneral}
+@image{ProofGeneral-image}
 @end iftex
 @author David Aspinall and Thomas Kleymann
 @author with P. Courtieu, H. Goguen, D. Sequeira, M. Wenzel.
@@ -199,12 +194,26 @@ other documentation, system downloads, etc.
 
 
 @menu
+* News for Version 4.3::
 * News for Version 4.2::
 * News for Version 4.1::
 * News for Version 4.0::
 * Future::
 * Credits::                     
 @end menu
+
+@node News for Version 4.3
+@unnumberedsec News for Version 4.3
+@cindex news
+
+In Proof General version 4.3, the multiple file handling for Coq
+has been improved. It now supports asynchronous and parallel
+compilation of required modules. 
+
+The proof tree display now supports the newest features of Coq
+8.4. Proof General version 4.3 is compatible with Prooftree
+version 0.11 (or better).
+
 
 @node News for Version 4.2
 @unnumberedsec News for Version 4.2
@@ -410,7 +419,7 @@ Thanks to all of you (and apologies to anyone missed)!
 @c would like the logo on the title page really but
 @c it doesn't seem to work there for html.
 @html
-<img src="ProofGeneral.jpg" alt="[ Proof General logo ]" >
+<img src="ProofGeneral-image.jpg" alt="[ Proof General logo ]" >
 @end html
 
 @dfn{Proof General} is a generic Emacs interface for interactive proof
@@ -653,8 +662,10 @@ Isabelle for more details.
 @b{Shell Proof General} for shell scripts (not really a proof assistant!)@*
 @xref{Shell Proof General}, for more details.
 @end itemize
+
 Proof General is designed to be generic, so if you know how
 to write regular expressions, you can make:
+
 @itemize @bullet
 @item
 @b{Your Proof General} for your favourite proof assistant.@*
@@ -662,6 +673,7 @@ For more details of how to make Proof General work
 with another proof assistant,
 see the accompanying manual @i{Adapting Proof General}.
 @end itemize
+
 The exact list of Proof Assistants supported may vary according to the
 version of Proof General you have and its local configuration; only the
 standard instances documented in this manual are listed above.
@@ -783,7 +795,8 @@ menus.
 @item
 First, start Emacs with Proof General loaded.  According to how you
 have installed Proof General, this may be by typing
-@code{proofgeneral}, selecting it from a menu, or simply by starting
+@code{proofgeneral} in a terminal, 
+selecting it from a menu, or simply by starting
 Emacs itself.
 @item
 Next, find a new file by @kbd{C-x C-f} and typing as the filename
@@ -3081,7 +3094,16 @@ Query the prover about the identifier near mouse click @var{event}.
 Since version 4.2, Proof General supports proof-tree
 visualization on graphical desktops via the additional program
 Prooftree. Currently, proof-tree visualization is only supported
-for the Coq proof assistant. For installation instructions and
+for the Coq proof assistant. 
+
+This version of Proof General requires Prooftree version 0.11.
+Check the @uref{http://askra.de/software/prooftree/, Prooftree website},
+to see if some later versions are also compatible. (Because of
+the communication protocol, Proof General is always only
+compatible with certain versions of Prooftree.)
+
+
+For installation instructions and
 more detailed information about Prooftree, please refer to the
 @uref{http://askra.de/software/prooftree/, Prooftree website} and
 the @uref{http://askra.de/software/prooftree/prooftree.man.html,
@@ -3149,6 +3171,9 @@ dependencies.
 given existential variable.
 @item Snapshots of proof trees for reference when you retract
 your proof to try a different approach.
+@item Trigger a retract (undo) operation with a selected sequent
+as target.
+@item Insert proof scripts from the proof tree in the current buffer.
 @end itemize
 
 For a more elaborated description please consult the help dialog
@@ -3355,7 +3380,7 @@ If you use several frames (the same Emacs in several windows on the
 screen), you can force a frame to stick to showing the goals or
 response buffer.
 
-The default value is @code{nil}.
+The default value is @code{t}.
 @end defopt
 
 Sometimes during script management, there is no response from the proof
@@ -3414,20 +3439,48 @@ without adjusting window layout.
 @end deffn
 
 @c TEXI DOCSTRING MAGIC: proof-layout-windows
-@deffn Command proof-layout-windows &optional nohorizontalsplit
+@deffn Command proof-layout-windows 
 Refresh the display of windows according to current display mode.
-
-For single frame mode, this uses a canonical layout made by splitting
-Emacs windows vertically in equal proportions.  You can then adjust
-the proportions by dragging the separating bars.  In three pane mode,
-the canonical layout is to split both horizontally and vertically, to
-display the prover responses in two panes on the right-hand side, and
-the proof script in a taller pane on the left.  A prefix argument will
-prevent the horizontal split, and result in three windows spanning the
-full width of the Emacs frame.
 
 For multiple frame mode, this function obeys the setting of
 @samp{@code{pg-response-eagerly-raise}}, which see.
+
+For single frame mode:
+
+- In two panes mode, this uses a canonical layout made by splitting
+Emacs windows in equal proportions. The splitting is vertical if
+emacs width is smaller than @samp{@code{split-width-threshold}} and
+horizontal otherwise. You can then adjust the proportions by
+dragging the separating bars.
+
+- In three pane mode, there are three display modes, depending
+@lisp
+  where the three useful buffers are displayed: scripting
+  buffer, goals buffer and response buffer.
+
+  Here are the three modes:
+
+  - vertical: the 3 buffers are displayed in one column.
+  - hybrid: 2 columns mode, left column displays scripting buffer
+    and right column displays the 2 others.
+  - horizontal: 3 columns mode, one for each buffer (script, goals,
+    response).
+
+  By default, the display mode is automatically chosen by
+  considering the current emacs frame width: if it is smaller
+  than @samp{@code{split-width-threshold}} then vertical mode is chosen,
+  otherwise if it is smaller than 1.5 * @samp{@code{split-width-threshold}}
+  then hybrid mode is chosen, finally if the frame is larger than
+  1.5 * @samp{@code{split-width-threshold}} then the horizontal mode is chosen.
+
+  You can change the value of @samp{@code{split-width-threshold}} at your
+  will.
+
+  If you want to force one of the layouts, you can set variable
+  @samp{@code{proof-three-window-mode-policy}} to @code{'vertical}, @code{'horizontal} or
+  @code{'hybrid}. The default value is @code{'smart} which sets the automatic
+  behaviour described above.
+@end lisp
 @end deffn
 
 @c TEXI DOCSTRING MAGIC: proof-shrink-windows-tofit
@@ -3458,7 +3511,7 @@ If output is not available, the type of the output region is displayed.
 Changes of this option will not be reflected in already-processed 
 regions of the script.
 
-The default value is @code{t}.
+The default value is @code{nil}.
 @end defopt
 
 
@@ -3972,6 +4025,12 @@ when a file is loaded. File variables and their values
 are written as a list at the end of
 the file.
 
+@emph{Remarque 1:} The examples in the following are for Coq but the
+trick is applicable to other provers. 
+
+@emph{Remarque 2:} For Coq specifically there is a recommended other way
+of configuring coq options: project files (@ref{Using the Coq project file}).
+
 For example, in Coq projects involving multiple directories, it is necessary
 to set the variable @code{coq-load-path} 
 (@ref{Customizing Coq Multiple File Support}). 
@@ -4028,13 +4087,13 @@ want to put each subdirectory into @code{coq-load-path} for every
 file in the project. You can achieve this by storing
 
 @lisp
-((coq-mode . ((coq-load-path . ("../dir_1" "../dir_2" ... )))))
+((coq-mode . ((coq-load-path . (("../util" "util") "../theories")))))
 @end lisp
 
-into the file @code{.dir-locals.el} in one of the parent
-directories. The value in this file must be an alist that maps
-mode names to alists, where these latter alists map variables to
-values, @inforef{Directory Variables, ,emacs}.
+into the file @code{.dir-locals.el} in one of the parent directories.
+The value in this file must be an alist that maps mode names to alists,
+where these latter alists map variables to values. You can aso put
+arbitrary code in this file @inforef{Directory Variables, ,emacs}.
 
 
 
@@ -4186,6 +4245,7 @@ assistant.  It supports most of the generic features of Proof General.
 
 @menu
 * Coq-specific commands::
+* Using the Coq project file::
 * Multiple File Support::
 * Editing multiple proofs::
 * User-loaded tactics::
@@ -4198,24 +4258,129 @@ assistant.  It supports most of the generic features of Proof General.
 @section Coq-specific commands
 @kindex C-c C-a C-i
 @kindex C-c C-a C-a
+@kindex C-c C-a C-b
 @kindex C-c C-a C-s
-@kindex C-c C-a C-e
+@kindex C-c C-a C-)
+@kindex C-c C-a C-p
+@kindex C-c C-a C-c
 @kindex C-c C-a C-o
 
 Coq Proof General supplies the following key-bindings:
 @table @kbd
 @item C-c C-a C-i   
-Inserts ``Intros '' 
-@item C-c C-a C-a
-Inserts ``Apply '' 
+Inserts ``intros '' and also introduces the name of the hypothesis
+proposed by coq on the current goal.
+
 @item C-c C-a C-s
-Inserts ``Section ''
-@item C-c C-a C-e
-Inserts ``End <section-name>.'' (this should work well with nested sections).
+Show the goal (enter for the current goal, i <enter> for the ith goal).
+
+Add the prefix C-u to see the answer with all pretty printing options
+temporarily disable (Set Printing All).
+
+@item C-c C-a C-c   
+Prompts for ``Check '' query arguments, the default input name is built
+from the identifier under the cursor.
+
+Add the prefix C-u to see the answer with all pretty printing options
+temporarily disable (Set Printing All).
+
+@item C-c C-a C-p
+The same for a ``Print '' query.
+@item C-c C-a C-b
+The same for a ``About '' query.
+@item C-c C-a C-a
+The same for a ``SearchAbout '' query (no C-u prefix).
 @item C-c C-a C-o
-Prompts for a SearchIsos argument.
+The same for a Search ``SearchIsos'' (no C-u prefix).
+
+@item C-c C-a C-)
+Inserts ``End <section-name>.'' (this should work well with nested sections).
 @end table
 
+
+
+@node Using the Coq project file
+@section Using the Coq project file
+
+Before starting the Coq process, one need to set @code{coqtop} options,
+in particular the -I and -R command that set the directories to have in
+the coq load path. You can use file variables (@ref{Using file
+variables}) as it was recommended on previous versions of ProofGeneral
+but there is now a better way. ProofGeneral knows how to extract this
+information from the Coq project file if there is one. The Coq project
+file must be named following variable `coq-project-filename' (default:
+@code{_CoqProject}) and be on the root directory of your development.
+
+It should contain something like:
+
+@verbatim
+-R foo bar
+-I foo2
+-arg -foo3
+@end verbatim
+
+The intial use of this file is to be given to the @code{coq_makefile}
+tool to generate a Makefile (see Coq documentation for details). It is
+parsed by ProofGeneral to guess the command line option. In this example
+the command line built by Proofgeneral will be @code{coqtop -foo3 -R foo
+bar -I foo2}.
+
+This is the recommended way of configuring coqtop options for coq
+compilation, CoqIde and Proofgeneral. Its main advantage is that it
+avoids duplicating informations between these three tools.
+
+For specific (and rare) per file configuration one can still use file
+variables (@ref{Using file variables}).
+
+@menu
+* Changing the name of the coq project file::
+* Disabling the coq project file mechanism::
+@end menu
+
+@node Changing the name of the coq project file
+@subsection Changing the name of the coq project file
+
+One can change the name of the project file by:
+
+(setq coq-project-filename "myprojectfile")
+
+or:
+
+(setq (make-local-variable 'coq-project-filename) "myprojectfile")
+
+If this is for a project, the best is probably to have a .dir-locals.el
+at the root of the project, as explained in  @ref{Using file
+variables}. This file should contain something like:
+
+@lisp
+((coq-mode . ((coq-project-filename . "myprojectfile"))))
+@end lisp
+
+or equivalently:
+
+@lisp
+((coq-mode
+  .
+  ((eval
+    .
+    (progn 
+      (make-local-variable 'coq-project-filename)
+      (setq coq-project-filename  "myprojectfile"))))))
+@end lisp
+
+@node Disabling the coq project file mechanism
+@subsection Disabling the coq project file mechanism
+
+If the variable `coq-use-project-file' is nil, then Proofgeneral will
+not look at project file. therefore you can put this in your config file
+(.emacs) to disable the use of project file:
+
+@lisp
+(setq coq-use-project-file nil)
+@end lisp
+
+You can also use the .dir-locals.el as above to configure this setting
+on a per project basis.
 
 @node Multiple File Support
 @section Multiple File Support
@@ -4246,13 +4411,23 @@ necessary files whenever a @code{Require} command is processed.
 The compilation feature does currently not support ML modules.
 @end table
 
-The current version works reliably, even when stress-tested with
-changing random files in large Coq projects. However, some
-features have been spared for the next release, @ref{Current
-Limitations}.
+There are actually two implementations of the Recompilation
+feature. 
 
-To enable the automatic compilation feature there are three
-points to adhere to:
+@table @asis
+@item Synchronous single threaded compilation (stable)
+With synchronous compilation, coqdep and coqc are called
+synchronously for each Require command. Proof General is locked
+until the compilation finishes
+@item Parallel asynchronous compilation (experimental)
+With parallel compilation, coqdep and coqc are launched in the
+background and Proof General stays responsive during compilation.
+Up to `coq-max-background-compilation-jobs' coqdep and coqc
+processes may run in parallel.
+@end table
+
+To enable the automatic compilation feature, you have to follow
+these points:
 
 @itemize @bullet
 @item
@@ -4275,6 +4450,14 @@ compilation command. For standard dependency analysis with
 @code{coqdep} and compilation with @code{coqc} the option
 @code{coq-compile-command} can be left empty. In this case Proof
 General calls @code{coqdep} and @code{coqc} as needed.
+@item
+The default compilation method is synchronous compilation. In
+order to experience parallel background compilation on all your
+CPU cores, 
+enable `coq-compile-parallel-in-background' (menu @code{Coq ->
+Settings -> Compile Parallel In Background}). Configure 
+@code{coq-max-background-compilation-jobs} if you want to limit
+the number of parallel background jobs.
 @end itemize
 
 
@@ -4295,9 +4478,9 @@ General looks for @code{Require} commands in text that gets
 asserted (i.e., in text that is moved from the editing region to
 the queue region, @ref{Locked queue and editing regions}). If
 Proof General finds a @code{Require} command, it checks the
-dependencies and (re-)compiles files as necessary. Only after
-this compilation is finished, Proof General starts sending the
-asserted text to the Coq process. 
+dependencies and (re-)compiles files as necessary. The Require
+command and the following text is only sent to Coq after the
+compilation finished.
 
 @code{Declare ML Module} commands are currently not recognized.
 
@@ -4341,11 +4524,6 @@ Note however, that @code{coqdep} does not produce error messages
 with location information, so @code{C-x `} cannot work for errors
 from @code{coqdep}.
 
-For simplicity, internal compilation is currently done with
-synchronously running external commands. Therefore, for internal
-compilation, Emacs is locked and unresponsive until the
-compilation finishes.
-
 Proof General cannot know if some library files have been updated
 outside of Proof General, therefore, it must perform the
 dependency checking for each @code{Require} command. If the
@@ -4361,6 +4539,44 @@ saved. There are two orthogonal choices: One may wish to save all
 or only the Coq source files, and, one may or may not want to
 confirm the saving of each file. 
 
+With `coq-compile-parallel-in-background' (menu @code{Coq ->
+Settings -> Compile Parallel In Background}) you can choose
+between two implementations of internal compilation.
+
+@table @asis
+@item Synchronous single threaded compilation
+This is the stable version supported since Proof General version
+4.1. This method starts coqdep and coqc processes one after each
+other in synchronous subprocesses. Your Emacs session will be
+locked until compilation finishes. Use @code{C-g} to interrupt
+compilation. 
+@item Parallel asynchronous compilation
+This is the new version added in Proof General version 4.3. It
+runs up to @code{coq-max-background-compilation-jobs} coqdep and
+coqc jobs in parallel in asynchronous subprocesses (or uses all
+your CPU cores if @code{coq-max-background-compilation-jobs}
+equals @code{'all-cpus}). Your Emacs will stay responsive during
+compilation. Use @code{C-c C-c} or the tool bar icons for
+interrupt or restart to interrupt compilation.
+
+For the usual case, you have at most
+`coq-max-background-compilation-jobs' parallel processes
+@emph{including} your Proof General process. The usual case
+applies, when the Require commands are the first commands in the
+file. If you have other commands between two Require commands or
+before the first Require, then you may see Proof General and Coq
+running in addition to `coq-max-background-compilation-jobs'
+compilation jobs.
+
+Actually, even with this method, not everything runs
+asynchronously. To translate module identifiers from the Coq
+sources into file names, Proof General runs coqdep on an
+automatically generated, one-line file. These coqdep jobs run
+synchronously while the Require commands are parsed. The coqdep
+jobs on the real source files do run asynchronously in the
+background. 
+@end table
+
 
 @node Locking Ancestors
 @subsection Locking Ancestors
@@ -4372,8 +4588,17 @@ Proof General performs dependency checking and compilation
 itself. If an external command is used, Proof General does not see
 all dependencies and can therefore only lock direct ancestors.
 
-Currently, locking ancestor files might not exactly do what Coq
-users expect. There are two ways around this problem: 
+In the default setting,
+when you want to edit a locked ancestor, you are
+forced to completely retract the current scripting buffer. 
+You can simplify this by setting @code{proof-strict-read-only} to
+@code{'retract} (menu @code{Proof-General -> Quick Options ->
+Read Only -> Undo On Edit}). Then typing in some ancestor will
+immediately retract you current scripting buffer and unlock that
+ancestor.
+
+You have two choices, if you don't like ancestor locking in its
+default way.
 You can either switch ancestor locking completely off via
 @code{coq-lock-ancestors} (@ref{Customizing Coq Multiple
 File Support}) or you can generally permit editing in locked
@@ -4382,17 +4607,13 @@ sections with selecting
 -> @code{Freely Edit} (which will set the option
 @code{proof-strict-read-only} to @code{nil}).
 
-In the default setting,
-when you want to edit a locked ancestor, you are
-forced to completely retract the current scripting buffer. The
-right behaviour for Coq would be to retract the current scripting
-buffer only up to the point before the appropriate @code{Require}
-command. At the users choice it should also be possible to unlock
-the ancestor without retracting the current scripting buffer. The
-latter would be adequate, if you just want to add a lemma in the
-ancestor @emph{and} want to continue the development in the
-current scripting buffer without interruption.
 
+[The right behaviour for Coq, namely to retract the current
+scripting buffer only up to the appropriate @code{Require}
+command, would be quite difficult to implement in the current
+Proof General infrastructure. Further, it has only dubious
+benefit, as Require commands are usually on the top of each
+file.]
 
 
 @node Customizing Coq Multiple File Support
@@ -4431,6 +4652,37 @@ modified Coq buffers, @code{'ask-all} to confirm saving all modified
 buffers, @code{'save-coq} to save all modified Coq buffers without
 confirmation and @code{'save-all} to save all modified buffers without
 confirmation.
+@end defvar
+
+
+The following two options are for the parallel compilation
+method.
+
+@c TEXI DOCSTRING MAGIC: coq-compile-parallel-in-background
+@defvar coq-compile-parallel-in-background 
+Choose the internal compilation method.@*
+When Proof General compiles itself, you have the choice between
+two implementations. If this setting is nil, then Proof General
+uses the old implementation and compiles everything sequentially
+with synchronous job. With this old method Proof General is
+locked during compilation. If this setting is t, then the new
+method is used and compilation jobs are dispatched in parallel in
+the background. The maximal number of parallel compilation jobs
+is set with @samp{@code{coq-max-background-compilation-jobs}}.
+
+This option can be set/reset via menu
+@samp{Coq -> Settings -> Compile Parallel In Background}.
+@end defvar
+
+@c TEXI DOCSTRING MAGIC: coq-max-background-compilation-jobs
+@defvar coq-max-background-compilation-jobs 
+Maximal number of parallel jobs, if parallel compilation is enabled.@*
+Use the number of available CPU cores if this is set to
+@code{'all-cpus}. This variable is the user setting. The value that is
+really used is @samp{@code{coq-internal-max-jobs}}. Use @samp{@code{coq-max-jobs-setter}}
+or the customization system to change this variable. Otherwise
+your change will have no effect, because @samp{@code{coq-internal-max-jobs}}
+is not adapted.
 @end defvar
 
 
@@ -4629,16 +4881,11 @@ identifier and should therefore not be matched by this regexp.
 
 In the current release some aspects of multiple file support have
 not been implemented. The following points will hopefully
-addressed in the next release:
+be addressed at some stage.
 
 @itemize
 @item
 Support @code{Declare ML Module} commands.
-@item
-Improved undo behaviour for locked ancestors.
-@item
-Use always asynchronous processes for compilation and do not lock
-up Emacs in internal compilation mode.
 @item
 Increase precision when comparing modification times. Because of
 an Emacs limitation, modification time stamps of files have only a
@@ -4646,7 +4893,8 @@ precision of 1 second. If several compiled Coq object files have
 been created in the same second, Proof General is optimistic and
 does not recompile. (Note that GNU make behaves the same on file
 systems that record time stamps only with a precision of 1
-second.)
+second.) Emacs version 24.3 implements high precision time stamps
+on files.
 @end itemize
 
 
@@ -4768,14 +5016,20 @@ you want to save abbrevs; answer yes.
 
 Starting with Proof General version 4.2 and Coq version 8.4, Coq
 Proof General has full support for proof-tree visualization, 
-@pxref{Graphical Proof-Tree Visualization}.
-
-Proof-tree visualization does currently neither support bullets
-and braces nor the command ``Grab Existential Variables''.
+@pxref{Graphical Proof-Tree Visualization}. To find out which
+versions of Prooftree are compatible with this version of Proof
+General, @pxref{Graphical Proof-Tree Visualization} or the 
+@uref{http://askra.de/software/prooftree/, Prooftree website}.
 
 For the visualization to work properly, proofs must be started
-with ``Proof.'', which is encouraged practice anyway (see Coq Bug
-#2776).
+with @code{Proof}, which is encouraged practice anyway (see Coq Bug
+#2776). Without @code{Proof} you lose the initial proof goal,
+possibly having two or more initial goals in the display.
+
+To support @code{Grab Existential Variables} Prooftree can
+actually display several graphically independent proof trees in
+several layers.
+
 
 @c =================================================================
 @c

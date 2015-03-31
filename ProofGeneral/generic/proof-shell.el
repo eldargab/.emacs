@@ -5,7 +5,7 @@
 ;;            Thomas Kleymann and Dilip Sequeira
 ;; License:   GPL (GNU GENERAL PUBLIC LICENSE)
 ;;
-;; proof-shell.el,v 12.12 2012/08/16 15:01:05 da Exp
+;; proof-shell.el,v 12.20 2015/03/09 17:16:58 pier Exp
 ;;
 ;;; Commentary:
 ;;
@@ -82,6 +82,20 @@ See the functions `proof-start-queue' and `proof-shell-exec-loop'.")
   (condition-case nil
       (funcall (nth 2 listitem) (car listitem))
     (error nil)))
+
+(defvar proof-second-action-list-active nil
+  "Signals that some items are waiting outside of `proof-action-list'.
+If this is t it means that some items from the queue region are
+waiting for being processed in a place different from
+`proof-action-list'. In this case Proof General must behave as if
+`proof-action-list' would be non-empty, when it is, in fact,
+empty.
+
+This is used, for instance, for parallel background compilation
+for Coq: The Require command and the following items are not put
+into `proof-action-list' and are stored somewhere else until the
+background compilation finishes. Then those items are put into
+`proof-action-list' for getting processed.")
 
 
 ;; We record the last output from the prover and a flag indicating its
@@ -229,6 +243,13 @@ If QUEUEMODE is supplied, set the lock to that value."
   :type 'boolean
   :group 'proof-shell)
 
+(defvar proof-shell-filter-active nil
+  "t when `proof-shell-filter' is running.")
+
+(defvar proof-shell-filter-was-blocked nil
+  "t when a recursive call of `proof-shell-filter' was blocked.
+In this case `proof-shell-filter' must be called again after it finished.")
+
 (defun proof-shell-set-text-representation ()
   "Adjust representation for current buffer, to match `proof-shell-unicode'."
   (unless proof-shell-unicode
@@ -263,6 +284,7 @@ process command."
   (interactive)
   (unless (proof-shell-live-buffer)
 
+    (setq proof-shell-filter-active nil)
     (setq proof-included-files-list nil) ; clear some state
 
     (let ((name (buffer-file-name (current-buffer))))
@@ -426,7 +448,8 @@ shell buffer, called by `proof-shell-bail-out' if process exits."
 	 (proc     (get-buffer-process (current-buffer)))
 	 (bufname  (buffer-name)))
     (message "%s, cleaning up and exiting..." bufname)
-
+    (run-hooks 'proof-shell-signal-interrupt-hook)
+    
     (redisplay t)
     (when (and alive proc)
       (catch 'exited
@@ -596,7 +619,11 @@ This is a subroutine of `proof-shell-handle-error'."
 
       ;; Erase if need be, and erase next time round too.
       (pg-response-maybe-erase t nil)
-      (pg-response-display-with-face string append-face)))
+      ;; Coloring the whole message may be ugly ad hide better
+      ;; coloring mechanism.
+      (if proof-script-color-error-messages
+	  (pg-response-display-with-face string append-face)
+	(pg-response-display-with-face string))))
 
 
 
@@ -666,6 +693,9 @@ unless the FLAGS for the command are non-nil (see `proof-action-list')."
       (save-excursion
 	(proof-script-clear-queue-spans-on-error badspan 
 						 (eq err-or-int 'interrupt))))
+    ;; Note: coq-par-emergency-cleanup, which might be called via
+    ;; proof-shell-handle-error-or-interrupt-hook below, assumes that
+    ;; proof-action-list is empty on error. 
     (setq proof-action-list nil)
     (proof-release-lock)
     (unless flags
@@ -786,7 +816,8 @@ the prover command buffer (e.g., with Isabelle2009 press RET inside *isabelle*).
     (error "Proof process not active!"))
   (setq proof-shell-interrupt-pending t)
   (with-current-buffer proof-shell-buffer
-    (interrupt-process)))
+    (interrupt-process))
+  (run-hooks 'proof-shell-signal-interrupt-hook))
 
 
 
@@ -836,7 +867,7 @@ used in `proof-add-to-queue' when we start processing a queue, and in
 
       ;; Replace CRs from string with spaces to avoid spurious prompts.
       (if proof-shell-strip-crs-from-input
-	  (setq string (subst-char-in-string ?\n ?\  string t)))
+	  (setq string (subst-char-in-string ?\n ?\  string)))
 
       (insert string)
 
@@ -894,6 +925,15 @@ track what happens in the proof queue."
 	  ;; More efficient: keep track of size of queue as modified.
 	  (>= (length proof-action-list) proof-shell-silent-threshold)))
 
+(defsubst proof-shell-should-not-be-silent ()
+  "Non-nil if we should switch to non silent mode based on size of queue."
+  (if (and proof-shell-stop-silent-cmd ; configured
+	   proof-shell-silent)	; already non silent
+	  ;; NB: to be more accurate we should only count number
+	  ;; of scripting items in the list (not e.g. invisibles).
+	  ;; More efficient: keep track of size of queue as modified.
+	  (< (length proof-action-list) proof-shell-silent-threshold)))
+
 
 (defsubst proof-shell-insert-action-item (item)
   "Insert ITEM from `proof-action-list' into the proof shell."
@@ -944,7 +984,7 @@ being processed."
   
     (if proof-action-list ;; something to do
 	(progn
-	  (if (proof-shell-should-be-silent)
+	  (when (proof-shell-should-be-silent)
 	      ;; do this ASAP, either first or just after current command
 	      (setq proof-action-list
 		    (if nothingthere ; the first thing
@@ -953,12 +993,27 @@ being processed."
 		      (cons (car proof-action-list) ; after current
 			    (cons (proof-shell-start-silent-item)
 				  (cdr proof-action-list))))))
+	  ;; Sometimes the non silent mode needs to be set because a
+	  ;; previous error prevented to go back to non silent mode
+	  (when (proof-shell-should-not-be-silent)
+	      ;; do this ASAP, either first or just after current command
+	      (setq proof-action-list
+		    (if nothingthere ; the first thing
+			(cons (proof-shell-stop-silent-item)
+			      proof-action-list)
+		      (cons (car proof-action-list) ; after current
+			    (cons (proof-shell-stop-silent-item)
+				  (cdr proof-action-list))))))	  
 	  (when nothingthere  ; start sending commands
 	    (proof-grab-lock queuemode)
 	    (setq proof-shell-last-output-kind nil)
 	    (proof-shell-insert-action-item (car proof-action-list))))
+      (if proof-second-action-list-active
+	  ;; primary action list is empty, but there are items waiting
+	  ;; somewhere else
+	  (proof-grab-lock queuemode)
       ;; nothing to do: maybe we completed a list of comments without sending them
-      (proof-detach-queue))))
+	(proof-detach-queue)))))
 
 
 ;;;###autoload
@@ -1062,17 +1117,19 @@ contains only invisible elements for Prooftree synchronization."
 	;; process the delayed callbacks now
 	(mapc 'proof-shell-invoke-callback cbitems)	
 
-	(unless proof-action-list	; release lock, cleanup
+	(unless (or proof-action-list proof-second-action-list-active)
+					; release lock, cleanup
 	  (proof-release-lock)
 	  (proof-detach-queue)
 	  (unless flags ; hint after a batch of scripting
 	    (pg-processing-complete-hint))
 	  (pg-finish-tracing-display))
 
-	(or (null proof-action-list)
-	    (every
-	     (lambda (item) (memq 'proof-tree-show-subgoal (nth 3 item)))
-	     proof-action-list))))))
+	(and (not proof-second-action-list-active)
+	     (or (null proof-action-list)
+		 (every
+		  (lambda (item) (memq 'proof-tree-show-subgoal (nth 3 item)))
+		  proof-action-list)))))))
 
 
 (defun proof-shell-insert-loopback-cmd  (cmd)
@@ -1263,12 +1320,50 @@ inverse to `proof-register-possibly-new-processed-file'."
 ;; The proof shell process filter
 ;;
 
-(defun proof-shell-filter (str)
+(defun proof-shell-filter-wrapper (str-do-not-use)
+  "Wrapper for `proof-shell-filter', protecting against parallel calls.
+In Emacs a process filter function can be called while the same
+filter is currently running for the same process, for instance,
+when the filter bocks on I/O. This wrapper protects the main
+entry point, `proof-shell-filter' against such parallel,
+overlapping calls.
+
+The argument STR-DO-NOT-USE contains the most recent output, but
+is discarded. `proof-shell-filter' collects the output from
+`proof-shell-buffer' (where it is inserted by
+`scomint-output-filter'), relieving this function from the task
+to buffer the output that arrives during parallel, overlapping
+calls."
+  (if proof-shell-filter-active
+      (progn
+	(setq proof-shell-filter-was-blocked t))
+    (let ((call-proof-shell-filter t))
+      (while call-proof-shell-filter
+	(setq proof-shell-filter-active t
+	      proof-shell-filter-was-blocked nil)
+	(condition-case err
+	    (progn
+	      (proof-shell-filter)
+	      (setq proof-shell-filter-active nil))
+	  ((error quit)
+	   (setq proof-shell-filter-active nil
+		 proof-shell-filter-was-blocked nil)
+	   (signal (car err) (cdr err))))
+	(setq call-proof-shell-filter proof-shell-filter-was-blocked)))))  
+
+
+(defun proof-shell-filter ()
   "Master filter for the proof assistant shell-process.
 A function for `scomint-output-filter-functions'.
 
-Deal with output STR and issue new input from the queue.  This is
-an important internal function.
+Deal with output and issue new input from the queue. This is an
+important internal function. The output must be collected from
+`proof-shell-buffer' for the following reason. This function
+might block inside `process-send-string' when sending input to
+the proof assistant or to prooftree. In this case Emacs might
+call the process filter again while the previous instance is
+still running. `proof-shell-filter-wrapper' detects and delays
+such calls but does not buffer the output.
 
 Handle urgent messages first.  As many as possible are processed,
 using the function `proof-shell-process-urgent-messages'.
@@ -1442,7 +1537,8 @@ After processing the current output, the last step undertaken
 by the filter is to send the next command from the queue."
   (let ((span  (caar proof-action-list))
 	(cmd   (nth 1 (car proof-action-list)))
-	(flags (nth 3 (car proof-action-list))))
+	(flags (nth 3 (car proof-action-list)))
+	(old-proof-marker (marker-position proof-marker)))
 
     ;; A copy of the last message, verbatim, never modified.
     (setq proof-shell-last-output
@@ -1461,7 +1557,7 @@ by the filter is to send the next command from the queue."
 		(proof-shell-handle-delayed-output)))
       ;; send output to the proof tree visualizer
       (if proof-tree-external-display
-	  (proof-tree-handle-delayed-output cmd flags span)))))
+	  (proof-tree-handle-delayed-output old-proof-marker cmd flags span)))))
 
 
 (defsubst proof-shell-display-output-as-response (flags str)
@@ -1614,6 +1710,8 @@ Only works when system timer has microsecond count available."
     (setq pg-tracing-slow-mode dontprint)))
 
 (defun pg-finish-tracing-display ()
+  "Handle the end of possibly voluminous tracing-style output.
+If the output update was slowed down, show it now."
   (proof-trace-buffer-finish)
   (when pg-tracing-slow-mode 
     (proof-display-and-keep-buffer proof-trace-buffer)
@@ -1779,7 +1877,7 @@ Error messages are displayed as usual."
   (setq scomint-output-filter-functions
 	(append
 	 (if proof-shell-strip-crs-from-output 'scomint-strip-ctrl-m)
-	 (list 'proof-shell-filter)))
+	 (list 'proof-shell-filter-wrapper)))
 
   (setq proof-marker 			; follows prompt
 	(make-marker)

@@ -4,7 +4,7 @@
 ;; Authors: Pierre Courtieu
 ;; Maintainer: Pierre Courtieu <Pierre.Courtieu@cnam.fr>
 ;;
-;; local-vars-list.el,v 12.1 2012/07/11 09:08:13 pier Exp
+;; local-vars-list.el,v 12.2 2013/07/22 12:21:48 pier Exp
 
 ;; This software is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public
@@ -19,6 +19,8 @@
 
 ;;; Commentary:
 ;; See documentation in variable local-var-list-doc
+
+;;; TODO: Rely on hack-file-local-variables instead
 
 ;;; History:
 ;;
@@ -105,7 +107,7 @@ variable definition (or at the \"End:\" line)."
 	(read (buffer-substring boexp (point))))))) ; TODO: catch errors here?
 
 
-
+;; Only looks for file local vars. Not dir local vars. 
 (defun local-vars-list-get (symb)
   "Return the value written in the local variable list for variable symb.
 Raises an error if symb is not in the list.

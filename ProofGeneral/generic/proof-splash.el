@@ -4,7 +4,7 @@
 ;; Author:    David Aspinall
 ;; License:   GPL (GNU GENERAL PUBLIC LICENSE)
 ;;
-;; proof-splash.el,v 12.2 2012/01/14 12:50:48 tews Exp
+;; proof-splash.el,v 12.3 2013/05/22 19:05:48 tews Exp
 ;;
 ;;
 ;;; Commentary:
@@ -49,7 +49,7 @@ Proof General."
     nil
     (proof-get-image "pg-text" t)
     nil
-    (proof-get-image "ProofGeneral")
+    (proof-get-image "ProofGeneral-image")
     nil
     "Welcome to"
     (concat proof-assistant " Proof General!")

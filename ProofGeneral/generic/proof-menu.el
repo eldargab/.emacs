@@ -4,7 +4,7 @@
 ;; Authors:   David Aspinall
 ;; License:   GPL (GNU GENERAL PUBLIC LICENSE)
 ;;
-;; proof-menu.el,v 12.3 2012/08/16 15:01:05 da Exp
+;; proof-menu.el,v 12.4 2014/12/22 23:47:37 pier Exp
 ;;
 
 (require 'cl)				; mapcan
@@ -243,10 +243,43 @@ without adjusting window layout."
      ["Comments"   (pg-show-all-portions 'comment 'hide) t]))
   "Show/hide submenu.")
 
+
+(defvar proof-3-window-mode-policy
+  (cons "3 Windows mode layout"
+	'(["smart"
+	   (progn
+	     (customize-set-variable 'proof-three-window-mode-policy 'smart)
+	     (proof-layout-windows))
+	   :style radio
+	   :selected (eq proof-three-window-mode-policy 'smart)
+	   :help "Adapt to frame width (C-c C-l to refresh)"]
+	  ["hybrid"
+	   (progn
+	     (customize-set-variable 'proof-three-window-mode-policy 'hybrid)
+	     (proof-layout-windows))
+	   :style radio
+	   :selected (eq proof-three-window-mode-policy 'hybrid)
+	   :help "two column mode"]
+	  ["horizontal"
+	   (progn
+	     (customize-set-variable 'proof-three-window-mode-policy 'horizontal)
+	     (proof-layout-windows))
+	   :style radio
+	   :selected (eq proof-three-window-mode-policy 'horizontal)
+	   :help "Three column mode"]
+	  ["vertical"
+	   (progn
+	     (customize-set-variable 'proof-three-window-mode-policy 'vertical)
+	     (proof-layout-windows))
+	   :style radio
+	   :selected (eq proof-three-window-mode-policy 'vertical)
+	   :help "One column mode"])))
+
 (defvar proof-buffer-menu
   (cons "Buffers"
-	'(["Layout Windows"
-	   proof-layout-windows]
+	`(["Layout Windows" proof-layout-windows]
+	  ,proof-3-window-mode-policy
+	  ""
 	  ["Rotate Output Buffers"
 	   proof-display-some-buffers
 	   :visible (not proof-three-window-enable)
@@ -271,7 +304,7 @@ without adjusting window layout."
 	  ["Shell"
 	   (proof-switch-to-buffer proof-shell-buffer)
 	   :active (buffer-live-p proof-shell-buffer)]))
-  "Proof General buffer menu.")
+  "Proof General 3 window mode policy.")
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

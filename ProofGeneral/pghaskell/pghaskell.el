@@ -1,6 +1,6 @@
-;; pgocaml.el - Proof General for Haskell scripts.
+;; pghaskell.el - Proof General for Haskell scripts.
 ;;
-;; David Aspinall.  pghaskell.el,v 1.2 2012/08/09 11:43:02 da Exp
+;; David Aspinall.  pghaskell.el,v 1.3 2015/01/05 11:39:38 da Exp
 ;;
 ;; This instance of PG is handy just for using script management to
 ;; cut-and-paste into a buffer running Haskell (ghci)
@@ -33,7 +33,7 @@
  proof-script-comment-end            "*)"
  proof-shell-annotated-prompt-regexp "^# "  ;; matches interpreter prompts
 
- ;; Syntax table suitable for OCaml; see Elisp documentation of `modify-syntax-entry'
+ ;; Syntax table suitable for Haskell; see Elisp documentation of `modify-syntax-entry'
  proof-script-syntax-table-entries
  '(?\` "\""
    ?\$ "."

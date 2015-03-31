@@ -11,7 +11,7 @@
 ;;
 ;; Contributors:  David von Oheimb, Sebastian Skalberg
 ;;
-;; isar.el,v 12.1 2011/10/17 09:25:36 da Exp
+;; isar.el,v 12.2 2013/07/05 12:19:22 makarius Exp
 ;;
 
 ;;; Code:
@@ -57,7 +57,7 @@ See -k option for Isabelle interface script."
 (defpgdefault completion-table isar-keywords-major)
 
 (defcustom isar-web-page
-  "http://isabelle.in.tum.de/Isar/"
+  "http://isabelle.in.tum.de/"
   "URL of web page for Isabelle/Isar."
   :type 'string
   :group 'isabelle-isar)

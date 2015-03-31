@@ -84,7 +84,8 @@
 ;;
 
 (defvar pg-response-special-display-regexp nil
-  "Regexp for `special-display-regexps' for multiple frame use.
+  "Regexp for `special-display-regexps' (now display-buffer-alist)
+for multiple frame use.
 Internal variable, setting this will have no effect!")
 
 (defconst proof-multiframe-parameters
@@ -97,13 +98,33 @@ Internal variable, setting this will have no effect!")
   "List of GNU Emacs frame parameters for secondary frames.")
 
 (defun proof-multiple-frames-enable ()
-  (let ((spdres (cons
-		 pg-response-special-display-regexp
-		 proof-multiframe-parameters)))
-    (if proof-multiple-frames-enable
-	(add-to-list 'special-display-regexps spdres)
-      (setq special-display-regexps
-	    (delete spdres special-display-regexps))))
+  ; special-display-regexps is obsolete, let us let it for a while and
+  ; remove it later
+  (unless (eval-when-compile (boundp 'display-buffer-alist))
+    (let ((spdres (cons
+		   pg-response-special-display-regexp
+		   proof-multiframe-parameters)))
+      (if proof-multiple-frames-enable
+	  (add-to-list 'special-display-regexps spdres)
+	(setq special-display-regexps
+	      (delete spdres special-display-regexps)))))
+  ; This is the current way to do it
+  (when (eval-when-compile (boundp 'display-buffer-alist))
+    (let
+	((display-buffer-entry
+	  (cons pg-response-special-display-regexp
+	    `((display-buffer-reuse-window display-buffer-pop-up-frame) .
+	      ((reusable-frames . t)
+	       (pop-up-frame-parameters
+		.
+		,proof-multiframe-parameters))))))
+      (if proof-multiple-frames-enable
+	  (add-to-list
+	   'display-buffer-alist
+	   display-buffer-entry)
+	;(add-to-list 'display-buffer-alist (proof-buffer-dislay))
+	(setq display-buffer-alist
+	      (delete display-buffer-entry display-buffer-alist)))))
   (proof-layout-windows))
 
 (defun proof-three-window-enable ()
@@ -125,7 +146,6 @@ Following POLICY, which can be one of 'smart, 'horizontal,
 	  (setq pol 'hybrid))
 	 (t (setq pol 'vertical)))
       (setq pol policy))
-    (message "policy = %S , pol = %S" policy pol)
   (save-selected-window
     (cond
      ((eq pol 'hybrid)
@@ -215,22 +235,29 @@ dragging the separating bars.
   (interactive)
   (cond
    (proof-multiple-frames-enable
+    ;; If we are coming from single frame mode, delete associated
+    ;; windows (and only them).
     (delete-other-windows) ;; hope we're on the right frame/window
     (if proof-script-buffer
 	(switch-to-buffer proof-script-buffer))
-    (proof-map-buffers (proof-associated-buffers)
-      (if pg-response-eagerly-raise
-	  (proof-display-and-keep-buffer (current-buffer) nil 'force)))
+    (proof-map-buffers
+     (proof-associated-buffers)
+     (if pg-response-eagerly-raise
+	 (proof-display-and-keep-buffer (current-buffer) nil 'force)))
     ;; Restore an existing frame configuration (seems buggy, typical)
     (if pg-frame-configuration
 	(set-frame-configuration pg-frame-configuration 'nodelete)))
-   (proof-three-window-enable
+   (proof-three-window-enable ; single frame
+    ;; If we are coming from multiple frame mode, delete associated
+    ;; frames (and only them).
     (proof-delete-other-frames)
     (set-window-dedicated-p (selected-window) nil)
     (proof-display-three-b proof-three-window-mode-policy))
    ;; Two-of-three window mode.
    ;; Show the response buffer as first in preference order.
    (t
+    ;; If we are coming from multiple frame mode, delete associated
+    ;; frames (and only them).
     (proof-delete-other-frames)
     (set-window-dedicated-p (selected-window) nil)
     (delete-other-windows)
@@ -356,8 +383,9 @@ Returns non-nil if response buffer was cleared."
 	;; with warnings after delayed output (non newline terminated).
 	(goto-char (point-max))
 	;; insert a newline before the new message unless the
-	;; buffer is empty
-	(unless (eq (point-min) (point-max))
+	;; buffer is empty or proof-script-insert-newlines is nil
+	(unless (or (not proof-script-insert-newlines)
+		    (eq (point-min) (point-max)))
 	  (newline))
 	(setq start (point))
 	(insert str)
@@ -468,7 +496,12 @@ and start at the first error."
 		     (rebufwindow
 		      (or (get-buffer-window proof-response-buffer 'visible)
 			  ;; Pop up a window.
-			  (display-buffer proof-response-buffer))))
+			  (display-buffer
+                           proof-response-buffer
+                           (and (eval-when-compile
+                                  (boundp 'display-buffer-alist))
+                                proof-multiple-frames-enable
+                                (cons nil proof-multiframe-parameters))))))
 		  ;; Make sure the response buffer stays where it is,
 		  ;; and make sure source buffer is visible
 		  (select-window rebufwindow)

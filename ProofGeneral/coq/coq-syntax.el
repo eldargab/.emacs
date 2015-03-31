@@ -4,7 +4,7 @@
 ;; License:     GPL (GNU GENERAL PUBLIC LICENSE)
 ;; Maintainer: Pierre Courtieu <Pierre.Courtieu@cnam.fr>
 
-;; coq-syntax.el,v 11.12 2012/07/24 09:27:16 pier Exp
+;; coq-syntax.el,v 11.13 2013/07/10 14:59:08 pier Exp
 
 (require 'proof-syntax)
 (require 'proof-utils)                  ; proof-locate-executable
@@ -20,9 +20,9 @@
 
 (defcustom coq-user-tactics-db nil
   "User defined tactic information.  See `coq-syntax-db' for
- syntax. It is not necessary to add your own tactics here (it is not
- needed by the synchronizing/backtracking system). You may however do
- so for the following reasons:
+syntax. It is not necessary to add your own tactics here (it is not
+needed by the synchronizing/backtracking system). You may however do
+so for the following reasons:
 
    1 your tactics will be colorized by font-lock
 
@@ -289,6 +289,21 @@
      ("unfold in" "unfi" "unfold # in #" t)
      ("unfold at" "unfa" "unfold # at #" t)
      ("vm_compute" "vmc" "vm_compute." t "vm_compute")
+     ;; SSReflect tactics.
+     ("nat_congr" "ncongr"  "nat_congr" t "nat_congr")
+     ("nat_norm" "nnorm"  "nat_norm" t "nat_norm")
+     ("bool_congr" "bcongr"  "bool_congr" t "bool_congr")
+     ("prop_congr" "prcongr"  "prop_congr" t "prop_congr")
+     ("move" "m"  "move" t "move")
+     ("pose" "po"  "pose # := #" t "pose")
+     ("set" "set"  "set # := #" t "set")
+     ("have" "hv" "have # : #" t "have")
+     ("congr" "con" "congr #" t "congr")
+     ("wlog" "wlog" "wlog : / #" t "wlog")
+     ("without loss" "wilog" "without loss #" t "without loss")
+     ("unlock" "unlock" "unlock #" t "unlock")
+     ("suffices" "suffices" "suffices # : #" t "suffices")
+     ("suff" "suff" "suff # : #" t "suff")
      ))
   "Coq tactics information list. See `coq-syntax-db' for syntax. "
   )
@@ -316,6 +331,8 @@
      ("ring" "ring" "ring #" t "ring")
      ("solve" nil "solve [ # | # ]" nil "solve")
      ("tauto" "ta" "tauto" t "tauto")
+     ;; SSReflect solving tactics.
+     ("done" nil "done" nil "done")
      ))
   "Coq tactic(al)s that solve a subgoal."
   )
@@ -357,6 +374,8 @@
      ("progress" nil "progress #" nil "progress")
      ("|" nil "[ # | # ]" nil)
      ("||" nil "# || #" nil)
+     ;; SSReflect tacticals.
+     ("last" "lst" nil t "last")
      ))
   "Coq tacticals information list.  See `coq-syntax-db' for syntax.")
 
@@ -467,6 +486,7 @@
     ("Instance goal" "instg" "Instance #:#.\n#\nDefined." t);; careful
     ("Lemma" "l" "Lemma # : #.\nProof.\n#\nQed." t "Lemma")
     ("Program Lemma" "pl" "Program Lemma # : #.\nProof.\n#\nQed." t "Program\\s-+Lemma")
+    ("Proposition" "l" "Proposition # : #.\nProof.\n#\nQed." t "Proposition")
     ("Module! (interactive)" nil "Module # : #.\n#\nEnd #." nil nil coq-insert-section-or-module)
     ("Module Type" "mti" "Module Type #.\n#\nEnd #." t "Module\\s-+Type") ; careful
     ("Module :" "moi" "Module # : #.\n#\nEnd #." t "Module") ; careful
@@ -482,6 +502,40 @@
   "Coq goal starters keywords information list. See `coq-syntax-db' for syntax. "
   )
 
+;; TODO: dig other queries from the refman.
+;; Extraction command may go here
+;; all Print, Show and Test stuff
+;; Some of the Set/Unset (like Set Printing All, Set Extraction Inline etc)
+(defvar coq-queries-commands-db
+   '(
+     ("About" nil "About #." nil "About")
+     ("Check" nil "Check" nil "Check")
+     ("Inspect" nil "Inspect #." nil "Inspect")
+     ("Locate File" nil "Locate File \"#\"." nil "Locate\\s-+File")
+     ("Locate Library" nil "Locate Library #." nil "Locate\\s-+Library")
+     ("Locate Notation" nil "Locate Notation (#) #" nil "Locate\\s-+Notation")
+     ("Locate" nil "Locate" nil "Locate")
+     ("Print Coercions" nil "Print Coercions." nil "Print\\s-+Coercions")
+     ("Print Hint" nil "Print Hint." nil "Print\\s-+Hint" coq-PrintHint)
+     ("Print" "p" "Print #." nil "Print")
+     ("Pwd" nil "Pwd." nil "Pwd")
+     ("Search" nil "Search #" nil "Search")
+     ("SearchAbout" nil "SearchAbout #" nil "SearchAbout")
+     ("SearchPattern" nil "SearchPattern (#)" nil "SearchPattern")
+     ("SearchRewrite" nil "SearchRewrite #" nil "SearchRewrite")
+     ("Show" nil "Show #." nil "Show")
+     ("Test" nil "Test" nil "Test" nil t)
+     ("Test Printing Depth" nil "Test Printing Depth." nil "Test\\s-+Printing\\s-+Depth")
+     ("Test Printing If" nil "Test Printing If #." nil "Test\\s-+Printing\\s-+If")
+     ("Test Printing Let" nil "Test Printing Let #." nil "Test\\s-+Printing\\s-+Let")
+     ("Test Printing Synth" nil "Test Printing Synth." nil "Test\\s-+Printing\\s-+Synth")
+     ("Test Printing Width" nil "Test Printing Width." nil "Test\\s-+Printing\\s-+Width")
+     ("Test Printing Wildcard" nil "Test Printing Wildcard." nil "Test\\s-+Printing\\s-+Wildcard")
+     )
+   "Coq queries command, that deserve a separate menu for sending them to coq without insertion. "
+   )
+
+
 ;; command that are not declarations, definition or goal starters
 (defvar coq-other-commands-db
    '(
@@ -489,7 +543,6 @@
      ("BeginSubproof" "bs" "BeginSubproof.\n#\nEndSubproof." t "BeginSubproof")
      ("EndSubproof" "es" "EndSubproof.#" t "EndSubproof")
      ;; ("Abort" nil "Abort." t "Abort" nil nil);don't appear in menu
-     ("About" nil "About #." nil "About")
 ;     ("Add" nil "Add #." nil "Add" nil t)
      ("Add Abstract Ring" nil "Add Abstract Ring #." t "Add\\s-+Abstract\\s-+Ring")
      ("Add Abstract Semi Ring" nil "Add Abstract Semi Ring #." t "Add\\s-+Abstract\\s-+Semi\\s-+Ring")
@@ -509,7 +562,6 @@
      ("Bind Scope" "bndsc" "Bind Scope @{scope} with @{type}" t "Bind\\s-+Scope")
      ("Canonical Structure" nil "Canonical Structure #." t "Canonical\\s-+Structure")
      ("Cd" nil "Cd #." nil "Cd")
-     ("Check" nil "Check" nil "Check")
      ("Local Close Scope" "lclsc" "Local Close Scope #" t "Local\\s-+Close\\s-+Scope")
      ("Close Scope" "clsc" "Close Scope #" t "Close\\s-+Scope")
      ("Comments" nil "Comments #." nil "Comments")
@@ -536,10 +588,6 @@
      ("Implicit Types" nil "Implicit Types # : #." t "Implicit\\s-+Types")
      ("Import" nil "Import #." t "Import")
      ("Infix" "inf" "Infix \"#\" := # (at level #) : @{scope}." t "Infix")
-     ("Inspect" nil "Inspect #." nil "Inspect")
-     ("Locate File" nil "Locate File \"#\"." nil "Locate\\s-+File")
-     ("Locate Library" nil "Locate Library #." nil "Locate\\s-+Library")
-     ("Locate" nil "Locate" nil "Locate")
      ("Notation (assoc)" "notas" "Notation \"#\" := # (at level #, # associativity)." t)
      ("Notation (at assoc)" "notassc" "Notation \"#\" := # (at level #, # associativity) : @{scope}." t)
      ("Notation (at at scope)" "notasc" "Notation \"#\" := # (at level #, # at level #) : @{scope}." t)
@@ -555,11 +603,7 @@
      ("Open Local Scope" nil "Open Local Scope #" t "Open\\s-+Local\\s-+Scope")
      ("Open Scope" "opsc" "Open Scope #" t "Open\\s-+Scope")
      ("Preterm" nil "Preterm." nil "Preterm")
-     ("Print Coercions" nil "Print Coercions." nil "Print\\s-+Coercions")
-     ("Print Hint" nil "Print Hint." nil "Print\\s-+Hint" coq-PrintHint)
-     ("Print" "p" "Print #." nil "Print")
      ("Qed" nil "Qed." nil "Qed")
-     ("Pwd" nil "Pwd." nil "Pwd")
      ("Recursive Extraction" "recextr" "Recursive Extraction @{id}." nil "Recursive\\s-+Extraction")
      ("Recursive Extraction Library" "recextrl" "Recursive Extraction Library @{id}." nil "Recursive\\s-+Extraction\\s-+Library")
      ("Recursive Extraction Module" "recextrm" "Recursive Extraction Module @{id}." nil "Recursive\\s-+Extraction\\s-+Module")
@@ -573,10 +617,6 @@
      ("Reserved Notation" nil "Reserved Notation" nil "Reserved\\s-+Notation")
      ("Reset Extraction Inline" nil "Reset Extraction Inline." t "Reset\\s-+Extraction\\s-+Inline")
      ("Save" nil "Save." t "Save")
-     ("Search" nil "Search #" nil "Search")
-     ("SearchAbout" nil "SearchAbout #" nil "SearchAbout")
-     ("SearchPattern" nil "SearchPattern #" nil "SearchPattern")
-     ("SearchRewrite" nil "SearchRewrite #" nil "SearchRewrite")
      ("Set Extraction AutoInline" nil "Set Extraction AutoInline" t "Set\\s-+Extraction\\s-+AutoInline")
      ("Set Extraction Optimize" nil "Set Extraction Optimize" t "Set\\s-+Extraction\\s-+Optimize")
      ("Set Implicit Arguments" nil "Set Implicit Arguments" t "Set\\s-+Implicit\\s-+Arguments")
@@ -588,16 +628,8 @@
      ("Set Printing Coercions" nil "Set Printing Coercions." t "Set\\s-+Printing\\s-+Coercions")
      ("Set Printing Notations" "sprn" "Set Printing Notations" t "Set\\s-+Printing\\s-+Notations")
      ("Set Undo" nil "Set Undo #." nil "Set\\s-+Undo")
-     ("Show" nil "Show #." nil "Show")
      ("Solve Obligations" "oblssolve" "Solve Obligations using #." t "Solve\\s-+Obligations")
      ("Tactic Notation" nil "Tactic Notation # := #." t "Tactic\\s-+Notation")
-     ("Test" nil "Test" nil "Test" nil t)
-     ("Test Printing Depth" nil "Test Printing Depth." nil "Test\\s-+Printing\\s-+Depth")
-     ("Test Printing If" nil "Test Printing If #." nil "Test\\s-+Printing\\s-+If")
-     ("Test Printing Let" nil "Test Printing Let #." nil "Test\\s-+Printing\\s-+Let")
-     ("Test Printing Synth" nil "Test Printing Synth." nil "Test\\s-+Printing\\s-+Synth")
-     ("Test Printing Width" nil "Test Printing Width." nil "Test\\s-+Printing\\s-+Width")
-     ("Test Printing Wildcard" nil "Test Printing Wildcard." nil "Test\\s-+Printing\\s-+Wildcard")
      ("Transparent" nil "Transparent #." nil "Transparent")
 
      ("Unfocus" nil "Unfocus." nil "Unfocus")
@@ -618,9 +650,15 @@
    "Command that are not declarations, definition or goal starters."
   )
 
+(defvar coq-ssreflect-commands-db
+  '(("Unset Strict Implicit" "unsti" nil t "Strict\\s-+Implicit")
+    ("Prenex Implicits" "pi" "Prenex Implicits #" t "Prenex\\s-+Implicits")
+    ("Hint View for" "hv" "Hint View for #" t "Hint\\s-+View\\s-+for")))
+
 (defvar coq-commands-db
   (append coq-decl-db coq-defn-db coq-goal-starters-db
-          coq-other-commands-db coq-user-commands-db)
+          coq-queries-commands-db
+          coq-other-commands-db coq-ssreflect-commands-db coq-user-commands-db)
   "Coq all commands keywords information list. See `coq-syntax-db' for syntax. "
   )
 
@@ -716,7 +754,7 @@ Used by `coq-goal-command-p'"
 (defun coq-section-command-p (str)
   (proof-string-match "\\`\\(Section\\|Chapter\\)\\>" str))
 
-
+;; unused anymore (for good)
 (defun coq-goal-command-str-p (str)
   "Decide syntactically whether STR is a goal start or not. Use
 `coq-goal-command-p' on a span instead if possible."
@@ -751,7 +789,8 @@ Used by `coq-goal-command-p'"
         (or (coq-section-command-p str)
             (coq-module-opening-p str)))))
 
-;; TODO: rely on coq response nistead for span grouping
+;; TODO: rely on coq response nistead for span grouping Or better have
+;; coq change its syntax for something better.
 (defvar coq-keywords-save-strict
   '("Defined" "Save" "Qed" "End" "Admitted" "Abort" )
   "This regexp must match *exactly* commands that close a goal/Module.
@@ -768,9 +807,7 @@ It is used:
   "Decide whether argument is a Save command or not"
   (or (proof-string-match coq-save-command-regexp-strict str)
       (and (proof-string-match "\\`Proof\\>" str)
-           (not (proof-string-match "Proof\\s-*\\(\\.\\|\\<with\\>\\)" str)))
-      )
-  )
+           (not (proof-string-match "Proof\\s-*\\(\\.\\|\\<with\\>\\|using\\)" str)))))
 
 
 ;; ----- keywords for font-lock.
@@ -840,7 +877,9 @@ It is used:
      "False" "True" "after" "as" "cofix" "fix" "forall" "fun" "match"
      "return" "struct" "else" "end" "if" "in" "into" "let" "then"
      "using" "with" "beta" "delta" "iota" "zeta" "after" "until"
-     "at" "Sort" "Time" "dest" "where"))
+     "at" "Sort" "Time" "dest" "where"
+     ;; SSReflect user reserved.
+     "is" "nosimpl" "of"))
   "Reserved keywords of Coq.")
 
 (defvar coq-reserved-regexp 
@@ -903,6 +942,9 @@ It is used:
 ;; ----- regular expressions
 (defvar coq-error-regexp "^\\(Error:\\|Discarding pattern\\|Syntax error:\\|System Error:\\|User Error:\\|User error:\\|Anomaly[:.]\\|Toplevel input[,]\\)"
   "A regexp indicating that the Coq process has identified an error.")
+
+(defvar coq-shell-eager-annotation-start
+   "\376\\|\\[Reinterning\\|Warning:\\|TcDebug \\|<infomsg>")
 
 (defvar coq-id proof-id)
 (defvar coq-id-shy "@?\\(?:\\w\\|\\s_\\)+")
@@ -1007,12 +1049,6 @@ It is used:
     (cons (proof-regexp-alt-list coq-tacticals) 'proof-tacticals-name-face)
     (cons (proof-regexp-alt-list-symb (list "Set" "Type" "Prop")) 'font-lock-type-face)
     (cons "============================" 'font-lock-keyword-face)
-    (cons "Subtree proved!" 'font-lock-keyword-face)
-    (cons "subgoal [0-9]+ is:" 'font-lock-keyword-face)
-    (list "^\\([^ \n]+\\) \\(is defined\\)"
-          (list 2 'font-lock-keyword-face t)
-          (list 1 'font-lock-function-name-face t))
-
     (list coq-goal-with-hole-regexp 2 'font-lock-function-name-face))
     (if coq-variable-highlight-enable
         (list (list coq-decl-with-hole-regexp 2 'font-lock-variable-name-face)))
@@ -1023,7 +1059,30 @@ It is used:
     ;; Remove spurious variable and function faces on commas.
     '(proof-zap-commas))))
 
-(defvar coq-font-lock-keywords coq-font-lock-keywords-1)
+;; We define a slightly different set of keywords for response buffer.
+
+(defvar coq-response-font-lock-keywords
+   (append
+    coq-font-lock-terms
+    (list
+     (cons coq-keywords-regexp 'font-lock-keyword-face)
+     (cons coq-shell-eager-annotation-start 'proof-warning-face)
+     (cons coq-error-regexp 'proof-error-face)
+     (cons (proof-regexp-alt-list-symb (list "In environment" "The term" "has type")) 'proof-error-face)
+     (cons (proof-regexp-alt-list-symb (list "Set" "Type" "Prop")) 'font-lock-type-face)
+     ;; ", " is for multiple hypothesis diplayed in v8.5.
+     (cons "^ *\\([^\n :(),]\\|, \\)+ *:" 'proof-declaration-name-face)
+     (list "^\\([^ \n]+\\) \\(is defined\\)"
+           (list 1 'font-lock-function-name-face t)))))
+
+(defvar coq-goals-font-lock-keywords
+   (append
+    coq-font-lock-terms
+    (list
+     (cons "^ *\\([^ \n:()=]\\|, \\)+ *:" 'proof-declaration-name-face)
+     (cons (proof-regexp-alt-list-symb (list "Set" "Type" "Prop")) 'font-lock-type-face))))
+
+
 
 (defun coq-init-syntax-table ()
   "Set appropriate values for syntax table in current buffer."
@@ -1049,6 +1108,16 @@ It is used:
   (modify-syntax-entry ?\( "()1")
   (modify-syntax-entry ?\) ")(4"))
 
+;; use this to evaluate code with "." being consisdered a symbol
+;; constituent (better behavior for thing-at and maybe font-lock too,
+;; for indentation we use ad hoc smie lexers).
+(defmacro coq-with-altered-syntax-table (&rest code)
+  (let ((res (make-symbol "res")))
+    `(unwind-protect
+	 (progn (modify-syntax-entry ?\. "_")
+                (let ((,res (progn ,@code)))
+                  (modify-syntax-entry ?\. ".")
+                  ,res)))))
 
 (defconst coq-generic-expression
   (mapcar (lambda (kw)
@@ -1059,9 +1128,10 @@ It is used:
 		  1))
 	  (append coq-keywords-decl coq-keywords-defn coq-keywords-goal)))
 
-(provide 'coq-syntax)
- ;;; coq-syntax.el ends here
 
-; Local Variables: ***
-; indent-tabs-mode: nil ***
-; End: ***
+;; Local Variables: ***
+;; indent-tabs-mode: nil ***
+;; End: ***
+
+(provide 'coq-syntax)
+;;; coq-syntax.el ends here

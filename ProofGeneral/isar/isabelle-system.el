@@ -5,7 +5,7 @@
 ;; Author:      David Aspinall <da@dcs.ed.ac.uk>
 ;; Maintainer:  Proof General maintainer <proofgen@dcs.ed.ac.uk>
 ;;
-;; isabelle-system.el,v 12.4 2012/08/30 14:30:23 monnier Exp
+;; isabelle-system.el,v 12.5 2015/03/11 15:21:31 da Exp
 ;;
 ;; Most of this code is taken from the final version of Isamode.
 ;; --------------------------------------------------------------
@@ -49,7 +49,10 @@
       (proof-locate-executable "isabelle" nil
 			       (list
 				;; support default unpack in home dir situation
-				(concat (getenv "HOME") "/Isabelle/bin/")))
+				(concat (getenv "HOME") "/Isabelle/bin/")
+				;; or Mac Package for Isabelle2014
+				"/Applications/Isabelle2014.app/Isabelle/bin/"
+				))
       "path_to_isabelle_is_unknown")
   "Command to invoke the main Isabelle wrapper 'isabelle'.
 Emacs should be able to find `isabelle' if it is on the PATH when

@@ -5,7 +5,7 @@
 ;; Authors:     David Aspinall <David.Aspinall@ed.ac.uk>
 ;;              Markus Wenzel
 ;;
-;; isar-syntax.el,v 12.0 2011/10/13 10:54:50 da Exp
+;; isar-syntax.el,v 12.1 2015/03/05 09:24:01 da Exp
 ;;
 
 (require 'cl)				; remove-if, remove-if-not
@@ -290,7 +290,7 @@ matches contents of quotes for quoted identifiers.")
 (defface isabelle-string-face 
   (proof-face-specs
    (:foreground "springgreen4")
-   (:background "springgreen1")
+   (:foreground "springgreen1")
    ())
   "*Face for fontifying string contents in Isabelle."
   :group 'proof-faces)
@@ -298,7 +298,7 @@ matches contents of quotes for quoted identifiers.")
 (defface isabelle-quote-face 
   (proof-face-specs
    (:foreground "Gray80")
-   (:background "Gray30")
+   (:foreground "Gray30")
    (:italic t))
   "*Face for quotes (string delimiters) in Isabelle."
   :group 'proof-faces)
@@ -330,7 +330,7 @@ matches contents of quotes for quoted identifiers.")
 (defface isabelle-free-name-face
   (proof-face-specs
    (:foreground "blue")
-   (:foreground "blue3")
+   (:foreground "lightblue")
    (:bold t))
   "*Face for Isabelle term / type highlighting"
   :group 'proof-faces)

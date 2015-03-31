@@ -1,10 +1,10 @@
-;; coq.el --- Major mode for Coq proof assistant
+;; coq.el --- Major mode for Coq proof assistant  -*- coding: utf-8 -*-
 ;; Copyright (C) 1994-2009 LFCS Edinburgh.
 ;; Authors: Healfdene Goguen, Pierre Courtieu
 ;; License:     GPL (GNU GENERAL PUBLIC LICENSE)
 ;; Maintainer: Pierre Courtieu <Pierre.Courtieu@cnam.fr>
 ;;
-;; coq.el,v 11.144 2012/10/03 21:22:56 pier Exp
+;; coq.el,v 11.195 2015/03/13 14:11:31 pier Exp
 
 
 
@@ -14,7 +14,6 @@
 
 (eval-when (compile)
   (require 'proof-utils)
-  (require 'proof-shell)
   (require 'span)
   (require 'outline)
   (require 'newcomment)
@@ -22,23 +21,22 @@
   (unless (proof-try-require 'smie)
     (defvar smie-indent-basic nil)
     (defvar smie-rules-function nil))
-  (defvar queueitems nil)       ; dynamic scope in p-s-extend-queue-hook
   (defvar proof-info nil)       ; dynamic scope in proof-tree-urgent-action
   (defvar action nil)       ; dynamic scope in coq-insert-as stuff
   (defvar string nil)       ; dynamic scope in coq-insert-as stuff
   (defvar coq-auto-insert-as nil)    ; defpacustom
   (defvar coq-time-commands nil)        ; defpacustom
+  (defvar coq-use-project-file t)        ; defpacustom
   (defvar coq-use-editing-holes nil)    ; defpacustom
-  (defvar coq-compile-before-require nil)       ; defpacustom
-  (defvar coq-confirm-external-compilation nil) ; defpacustom
   (defvar coq-hide-additional-subgoals nil) ; defpacustom
   (proof-ready-for-assistant 'coq))     ; compile for coq
 
 (require 'proof)
-(require 'pg-custom)                    ; declares coq-prog-args
 (require 'coq-syntax)                   ; sets coq-prog-name
 (require 'coq-local-vars)               ;
 (require 'coq-abbrev)                   ; coq specific menu
+(require 'coq-seq-compile)              ; sequential compilation
+(require 'coq-par-compile)              ; parallel compilation
 
 
 ;; for compilation in Emacs < 23.3 (NB: declare function only works at top level)
@@ -52,6 +50,13 @@
 
 (declare-function some "cl-extra")      ; spurious bytecomp warning
 
+;; prettify is in emacs > 24.4
+;; FIXME: this should probably be done like for smie above.
+(defvar coq-may-use-prettify nil) ; may become t below
+(eval-when-compile
+  (if (fboundp 'prettify-symbols-mode)
+      (defvar coq-may-use-prettify t)
+    (defvar prettify-symbols-alist nil)))
 
 
 ;; ----- coq-shell configuration options
@@ -94,18 +99,6 @@ See also `coq-prog-env' to adjust the environment."
 
 (unless noninteractive   ;; compiling
   (coq-build-prog-args))
-
-(defcustom coq-compiler
-  (proof-locate-executable "coqc" t nil)
-  "Command to invoke the coq compiler."
-  :type 'string
-  :group 'coq)
-
-(defcustom coq-dependency-analyzer
-  (proof-locate-executable "coqdep" t nil)
-  "Command to invoke coqdep."
-  :type 'string
-  :group 'coq)
 
 (defcustom coq-use-makefile nil
   "Whether to look for a Makefile to attempt to guess the command line.
@@ -156,16 +149,6 @@ On Windows you might need something like:
   "\\(============================\\)\\|\\(subgoal [0-9]+\\)\n")
 
 
-
-(defun get-coq-library-directory ()
-  (let ((c (substring (shell-command-to-string "coqtop -where") 0 -1 )))
-    (if (string-match c "not found")
-        "/usr/local/lib/coq"
-      c)))
-
-(defconst coq-library-directory (get-coq-library-directory)
-  "The coq library directory, as reported by \"coqtop -where\".")
-
 (defcustom coq-tags (concat coq-library-directory "/theories/TAGS")
   "The default TAGS table for the Coq library."
   :type 'string
@@ -215,7 +198,8 @@ See also `coq-hide-additional-subgoals'."
   :group 'coq-proof-tree)
 
 (defcustom coq-navigation-command-regexp
-  "^\\(Focus\\)\\|\\(Unfocus\\)"
+  (concat "^\\(\\(Focus\\)\\|\\(Unfocus\\)\\|"
+          "\\(\\+\\)\\|\\(-\\)\\|\\(\\*\\)\\|\\({\\)\\|\\(}\\)\\)")
   "Regexp for `proof-tree-navigation-command-regexp'."
   :type 'regexp
   :group 'coq-proof-tree)
@@ -226,10 +210,16 @@ See also `coq-hide-additional-subgoals'."
   :type 'regexp
   :group 'coq-proof-tree)
 
+(defcustom coq-proof-tree-new-layer-command-regexp
+  "^\\(\\(Proof\\)\\|\\(Grab Existential Variables\\)\\)"
+  "Regexp for `proof-tree-new-layer-command-regexp'."
+  :type 'regexp
+  :group 'coq-proof-tree)
+
 (defcustom coq-proof-tree-current-goal-regexp
   (concat "^[0-9]+ \\(?:focused \\)?subgoal\\(?:s\\)?"
-          "\\(?: (unfocused: [0-9]+)\\)?\\(?:\\s-*, subgoal 1\\)? "
-          "(ID \\([0-9]+\\))\n\\s-*\n\\(\\(?:.+\n\\)*\\)\\(?:\n\\|$\\)")
+          "\\(?: (unfocused: [-0-9]+)\\)?\\(?:\\s-*, subgoal 1\\)? "
+          "(ID \\([0-9]+\\))\n\\s-*\n\\(\\(?: .*\n\\)+\\)\\(?:\n\\|$\\)")
   "Regexp for `proof-tree-current-goal-regexp'."
   :type 'regexp
   :group 'coq-proof-tree)
@@ -269,9 +259,14 @@ See also `coq-hide-additional-subgoals'."
   :type 'regexp
   :group 'coq-proof-tree)
 
-(defcustom coq-proof-tree-proof-finished-regexp
-  "^\\(?:Proof completed\\)\\|\\(?:No more subgoals\\)\\."
-  "Regexp for `proof-tree-proof-finished-regexp'."
+;; pc: <infomsg> now has a newline (better output indentation)
+(defcustom coq-proof-tree-branch-finished-regexp
+  (concat "^\\(\\(?:Proof completed\\.\\)\\|\\(?:No more subgoals\\.\\)\\|"
+          "\\(No more subgoals but non-instantiated "
+          "existential variables:\\)\\|"
+          "\\(<infomsg>\\s-*This subproof is complete, but there are "
+          "still unfocused goals.\\s-*</infomsg>\\)\\)")
+  "Regexp for `proof-tree-branch-finished-regexp'."
   :type 'regexp
   :group 'coq-proof-tree)
 
@@ -314,24 +309,24 @@ See also `coq-hide-additional-subgoals'."
 ;; Derived modes
 ;;
 
-(eval-and-compile
+(eval-and-compile ;; FIXME: Why?
   (define-derived-mode coq-shell-mode proof-shell-mode
     "Coq Shell" nil
     (coq-shell-mode-config)))
 
-(eval-and-compile
+(eval-and-compile ;; FIXME: Why?
   (define-derived-mode coq-response-mode proof-response-mode
   "Coq Response" nil
     (coq-response-config)))
 
-(eval-and-compile
+(eval-and-compile ;; FIXME: Why?
   (define-derived-mode coq-mode proof-mode "Coq"
     "Major mode for Coq scripts.
 
 \\{coq-mode-map}"
     (coq-mode-config)))
 
-(eval-and-compile
+(eval-and-compile ;; FIXME: Why?
   (define-derived-mode coq-goals-mode proof-goals-mode
     "Coq Goals" nil
     (coq-goals-mode-config)))
@@ -339,19 +334,57 @@ See also `coq-hide-additional-subgoals'."
 ;; Indentation and navigation support via SMIE.
 
 (defcustom coq-use-smie t
-  "If non-nil, Coq mode will try to use SMIE for indentation.
+  "OBSOLETE. smie code is always used now.
+
+If non-nil, Coq mode will try to use SMIE for indentation.
 SMIE is a navigation and indentation framework available in Emacs >= 23.3."
   :type 'boolean
   :group 'coq)
 
 (require 'smie nil 'noerror)
-(require 'coq-smie-lexer nil 'noerror)
+(require 'coq-smie nil 'noerror)
 
 
 ;;
 ;; Auxiliary code for Coq modes
 ;;
 
+(defun coq-remove-trailing-blanks (s)
+  (let ((pos (string-match "\\s-*\\'" s)))
+    (substring s 0 pos)))
+
+(defun coq-remove-starting-blanks (s)
+  (string-match "\\`\\s-*" s)
+  (substring s (match-end 0) (length s)))
+
+
+;; Due to the architecture of proofgeneral, informative message put *before*
+;; the goal disappear unless marked as "urgent", i.e. being enclosed with
+;; "eager-annotation" syntax. Since we don't want the Warning color to be used
+;; for simple informative message, we have to redefine this function to use
+;; normal face when the "eager annotation" is acutally not a warning. This is a
+;; modified version of the same function in generic/proof-shell.el.
+(defun proof-shell-process-urgent-message-default (start end)
+  "A subroutine of `proof-shell-process-urgent-message'."
+  ;; Clear the response buffer this time, but not next, leave window.
+  (pg-response-maybe-erase nil nil)
+  (proof-minibuffer-message
+   (buffer-substring-no-properties
+    (save-excursion
+      (re-search-forward proof-shell-eager-annotation-start end nil)
+      (point))
+    (min end
+         (save-excursion (end-of-line) (point))
+         (+ start 75))))
+  (let*
+      ((face
+        (progn (goto-char start)
+               (if (looking-at "<infomsg>") 'default
+                 'proof-eager-annotation-face)))
+       (str (proof-shell-strip-eager-annotations start end))
+       (strnotrailingspace
+        (coq-remove-starting-blanks (coq-remove-trailing-blanks str))))
+    (pg-response-display-with-face strnotrailingspace))) ; face
 
 
 ;;;;;;;;;;; Trying to accept { and } as terminator for empty commands. Actually
@@ -379,8 +412,47 @@ SMIE is a navigation and indentation framework available in Emacs >= 23.3."
 ;;;;;;;;;;;;;;;;;;;;;;;;;; End of "{" and "} experiments ;;;;;;;;;;;;
 
 
-(defun coq-set-undo-limit (undos)
-  (proof-shell-invisible-command (format "Set Undo %s . " undos)))
+;;;;;;;;;;;;;;;;;;;;;;;;;; Freeze buffers ;;;;;;;;;;;;
+;; For storing output of respnse and goals buffers into a permanent buffer.
+
+(defun coq-clone-buffer-response-mode (s &optional erase)
+  (let ((already-existing (get-buffer s))
+        (nb (get-buffer-create s)))
+    (save-window-excursion
+      (switch-to-buffer nb)
+      (unless already-existing
+        (coq-response-mode)
+        (read-only-mode 0))
+      (goto-char (point-min))
+      (insert "\n************************************\n")
+      (goto-char (point-min)))
+    (if erase (copy-to-buffer nb (point-min) (point-max))
+      (append-to-buffer nb (point-min) (point-max)))
+    ;; (set-window-point window pos)
+    nb))
+
+;; copy the content of proof-response-buffer into the "response-freeze" buffer,
+;; resetting its content if ERASE non nil.
+(defun proof-store-buffer-win (buffer &optional erase)
+  (proof-with-current-buffer-if-exists buffer
+    (let ((newbuffer nil))
+      (set-buffer buffer)
+      (setq newbuffer (coq-clone-buffer-response-mode "*response-freeze*" erase))
+      (let ((win (display-buffer-other-frame newbuffer))
+            (win-point-min (save-window-excursion
+                             (switch-to-buffer-other-frame newbuffer)
+                             (point-min))))
+      (set-window-point win win-point-min)))))
+
+(defun proof-store-response-win (&optional erase)
+  (interactive "P")
+  (proof-store-buffer-win proof-response-buffer erase))
+
+(defun proof-store-goals-win (&optional erase)
+  (interactive "P")
+  (proof-store-buffer-win proof-goals-buffer erase))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 
@@ -468,39 +540,6 @@ Initially 1 because Coq initial state has number 1.")
 (defsubst proof-last-locked-span ()
   (with-current-buffer proof-script-buffer
     (span-at (- (proof-unprocessed-begin) 1) 'type)))
-
-(defun proof-clone-buffer (s &optional erase)
-  (let ((nb (get-buffer-create s)))
-    (save-window-excursion
-      (switch-to-buffer nb)
-      (goto-char (point-min))
-      (insert "\n************************************\n")
-      (goto-char (point-min)))
-    (if erase (copy-to-buffer nb (point-min) (point-max))
-      (append-to-buffer nb (point-min) (point-max)))
-    ;; (set-window-point window pos)
-    nb))
-
-;; copy the content of proof-response-buffer into the "response-freeze" buffer,
-;; resetting its content if ERASE non nil.
-(defun proof-store-buffer-win (buffer &optional erase)
-  (proof-with-current-buffer-if-exists buffer
-    (let ((newbuffer nil))
-      (set-buffer buffer)
-      (setq newbuffer (proof-clone-buffer "*response-freeze*" erase))
-      (let ((win (display-buffer-other-frame newbuffer))
-            (win-point-min (save-window-excursion
-                             (switch-to-buffer-other-frame newbuffer)
-                             (point-min))))
-      (set-window-point win win-point-min)))))
-
-(defun proof-store-response-win (&optional erase)
-  (interactive "P")
-  (proof-store-buffer-win proof-response-buffer erase))
-
-(defun proof-store-goals-win (&optional erase)
-  (interactive "P")
-  (proof-store-buffer-win proof-goals-buffer erase))
 
 ;; Each time the state changes (hook below), (try to) put the state number in
 ;; the last locked span (will fail if there is already a number which should
@@ -633,11 +672,26 @@ If locked span already has a state number, then do nothing. Also updates
 
 (defun coq-hide-additional-subgoals-switch ()
   "Function invoked when the user switches `coq-hide-additional-subgoals'."
-  (if coq-hide-additional-subgoals
-      (setq proof-shell-end-goals-regexp coq-end-goals-regexp-hide-subgoals)
-    (setq proof-shell-end-goals-regexp coq-end-goals-regexp-show-subgoals)))
+  (if coq-time-commands
+      (progn
+        (setq coq-hide-additional-subgoals nil)
+        (error
+         "You must disable ``Time Commands'' (var coq-time-commands) first"))
+    (if coq-hide-additional-subgoals
+        (setq proof-shell-end-goals-regexp coq-end-goals-regexp-hide-subgoals)
+      (setq proof-shell-end-goals-regexp coq-end-goals-regexp-show-subgoals))))
 
-
+(defun coq-time-commands-switch ()
+  "Function invoked when the user switches `coq-time-commands'.
+Resets `coq-hide-additional-subgoals' and puts nil into
+`proof-shell-end-goals-regexp' to ensure the timing is visible in
+the *goals* buffer."
+  (if coq-time-commands
+      (progn
+        (let ((coq-time-commands nil))
+          (customize-set-variable 'coq-hide-additional-subgoals nil))
+        (setq proof-shell-end-goals-regexp nil))
+    (coq-hide-additional-subgoals-switch)))
 
 ;;
 ;; Commands for Coq
@@ -672,20 +726,80 @@ Return nil if S is nil."
       (substring s 0 (- (length s) 1))
     s))
 
+(defun coq-grab-punctuation-left (pos)
+  (let ((res nil)
+        (currpos pos))
+    (while (equal (char-syntax (char-before currpos)) ?\.)
+      (setq res (concat (char-to-string (char-before currpos)) res))
+      (setq currpos (- currpos 1)))
+    res))
+
+
+(defun coq-grab-punctuation-right (pos)
+  (let ((res nil)
+        (currpos pos))
+    (while (equal (char-syntax (char-after currpos)) ?\.)
+      (setq res (concat res (char-to-string (char-after currpos))))
+      (setq currpos (+ currpos 1)))
+    res))
+
+(defun coq-notation-at-position (pos)
+  "Return the notation at current point.
+Support dot.notation.of.modules."
+  (coq-with-altered-syntax-table
+   (when (or (coq-grab-punctuation-left pos) (coq-grab-punctuation-right pos))
+     (concat (coq-grab-punctuation-left pos)
+             (coq-grab-punctuation-right pos)))))
+
+
 ;; remove trailing dot if any.
 (defun coq-id-at-point ()
   "Return the identifier at current point.
 Support dot.notation.of.modules."
-  (modify-syntax-entry ?\. "w") ; temporary for dot notation
-  (let* ((symb
-          (symbol-name (cond 
-                        ((fboundp 'symbol-near-point) (symbol-near-point))
-                        ((fboundp 'symbol-at-point) (symbol-at-point))
-                        (t 'nothing))))
-         (symbclean (coq-remove-trailing-dot symb)))
-    (modify-syntax-entry ?\. ".") ; go back to ususal syntax
-    (if (zerop (length symbclean)) nil symbclean)))
+  (coq-with-altered-syntax-table
+   (let* ((symb (cond
+                 ((fboundp 'symbol-near-point) (symbol-near-point))
+                 ((fboundp 'symbol-at-point) (symbol-at-point))))
+          (symbclean (when symb (coq-remove-trailing-dot (symbol-name symb)))))
+     (when (and symb (not (zerop (length symbclean)))) symbclean))))
 
+(defun coq-id-or-notation-at-point ()
+  (or (coq-id-at-point) (coq-notation-at-position (point))))
+
+
+(defcustom coq-remap-mouse-1 nil
+  "Wether coq mode should remap mouse button 1 to coq queries.
+
+This overrides the default global binding of (control mouse-1) and
+(shift mouse-1) (buffers and faces menus). Hence it is nil by
+default."
+  :type 'boolean
+  :group 'coq)
+
+
+;; On a mouse event, try to query the id at point clicked.
+(defun coq-id-under-mouse-query (event)
+  "Query the prover about the identifier or notation near mouse click EVENT.
+This is mapped to control/shift mouse-1, unless coq-remap-mouse-1
+is nil (t by default)."
+  (interactive "e")
+  (save-selected-window
+    (save-selected-frame
+     (save-excursion
+       (mouse-set-point event)
+       (let* ((id (coq-id-at-point))
+              (notat (coq-notation-at-position (point)))
+              (modifs (event-modifiers event))
+              (shft (member 'shift modifs))
+              (ctrl (member 'control modifs))
+              (cmd (when (or id notat)
+                     (if (and ctrl shft) (if id "Check" "Locate")
+                       (if shft (if id "About" "Locate")
+                         (if ctrl (if id "Print" "Locate")))))))
+         (proof-shell-invisible-command
+          (format (concat  cmd " %s . ")
+                  ;; Notation need to be surrounded by ""
+                  (if id id (concat "\"" notat "\"")))))))))
 
 (defun coq-guess-or-ask-for-string (s &optional dontguess)
   "Asks for a coq identifier with message S.
@@ -694,13 +808,12 @@ If DONTGUESS is non nil, propose a default value as follows:
 If region is active, propose its containt as default value.
 
 Otherwise propose identifier at point if any."
-  (let* (
-         (guess
+  (let* ((guess
           (cond
            (dontguess nil)
            ((use-region-p)
             (buffer-substring-no-properties (region-beginning) (region-end)))
-           (t (coq-id-at-point)))))
+           (t (coq-id-or-notation-at-point)))))
     (read-string
      (if guess (concat s " (default " guess "): ") (concat s ": "))
      nil 'proof-minibuffer-history guess)))
@@ -774,6 +887,29 @@ More precisely it executes SETCMD, then DO id and finally silently UNSETCMD."
 (defsubst coq-put-into-brackets (s)
   (concat "[ " s " ]"))
 
+(defsubst coq-put-into-double-quote-if-notation (s)
+  (if (equal (char-syntax (string-to-char s)) ?\.)
+      (concat "\"" s "\"")
+    s))
+
+(defcustom coq-removed-patterns-when-search
+  '("_ind" "_rect" "_rec")
+  "String list to remove from search request to coq environment."
+  :type '(repeat string)
+  :group 'coq)
+
+(defun coq-build-removed-pattern (s)
+  (concat " -\"" s "\""))
+
+(defun coq-build-removed-patterns (l)
+  (mapcar 'coq-build-removed-pattern l))
+
+(defsubst coq-put-into-double-quote-if-notation-remove-ind (s)
+  (let ((removed (coq-build-removed-patterns coq-removed-patterns-when-search)))
+    (if (equal (char-syntax (string-to-char s)) ?\.)
+        (apply 'concat (cons "\"" (cons s (cons "\"" removed))))
+      (apply 'concat (cons s removed)))))
+
 (defsubst coq-put-into-quotes (s)
   (concat "\"" s "\""))
 
@@ -787,69 +923,71 @@ This is specific to `coq-mode'."
 
 (defun coq-SearchConstant ()
   (interactive)
-  (coq-ask-do "Search constant" "Search" nil))
-
-(defun coq-Searchregexp ()
-  (interactive)
-  (coq-ask-do
-   "Search regexp (ex: \"eq_\" nat)"
-   "SearchAbout" nil 'coq-put-into-brackets))
+  (coq-ask-do "Search constant" "Search" nil 'coq-put-into-double-quote-if-notation))
 
 (defun coq-SearchRewrite ()
   (interactive)
   (coq-ask-do "SearchRewrite" "SearchRewrite" nil))
 
+;; TODO SearchAbout become Search in v8.5, change when V8.4 becomes old.
 (defun coq-SearchAbout ()
   (interactive)
   (coq-ask-do
    "SearchAbout (ex: \"eq_\" eq -bool)"
-   "SearchAbout" nil 'coq-put-into-brackets))
+   "SearchAbout" nil 'coq-put-into-double-quote-if-notation-remove-ind)
+  (message "use `coq-SearchAbout-all' to see constants ending with \"_ind\", \"_rec\", etc"))
+
+(defun coq-SearchAbout-all ()
+  (interactive)
+  (coq-ask-do
+   "SearchAbout (ex: \"eq_\" eq -bool)"
+   "SearchAbout" nil 'coq-put-into-double-quote-if-notation))
 
 (defun coq-Print (withprintingall)
   "Ask for an ident and print the corresponding term.
 With flag Printing All if some prefix arg is given (C-u)."
   (interactive "P")
   (if withprintingall
-      (coq-ask-do-show-all "Print" "Print")
-    (coq-ask-do "Print" "Print")))
+      (coq-ask-do-show-all "Print" "Print" nil 'coq-put-into-double-quote-if-notation)
+    (coq-ask-do "Print" "Print" nil 'coq-put-into-double-quote-if-notation)))
 
 (defun coq-Print-with-implicits ()
   "Ask for an ident and print the corresponding term."
   (interactive)
-  (coq-ask-do-show-implicits "Print" "Print"))
+  (coq-ask-do-show-implicits "Print" "Print" nil 'coq-put-into-double-quote-if-notation))
 
 (defun coq-Print-with-all ()
   "Ask for an ident and print the corresponding term."
   (interactive)
-  (coq-ask-do-show-all "Print" "Print"))
+  (coq-ask-do-show-all "Print" "Print" nil 'coq-put-into-double-quote-if-notation))
 
 (defun coq-About (withprintingall)
   "Ask for an ident and print information on it."
   (interactive "P")
   (if withprintingall
-      (coq-ask-do-show-all "About" "About")
-    (coq-ask-do "About" "About")))
+      (coq-ask-do-show-all "About" "About" nil 'coq-put-into-double-quote-if-notation)
+    (coq-ask-do "About" "About" nil 'coq-put-into-double-quote-if-notation)))
 
 (defun coq-About-with-implicits ()
   "Ask for an ident and print information on it."
   (interactive)
-  (coq-ask-do-show-implicits "About" "About"))
+  (coq-ask-do-show-implicits "About" "About" nil 'coq-put-into-double-quote-if-notation))
 
 (defun coq-About-with-all ()
   "Ask for an ident and print information on it."
   (interactive)
-  (coq-ask-do-show-all "About" "About"))
+  (coq-ask-do-show-all "About" "About" nil 'coq-put-into-double-quote-if-notation))
 
 
 (defun coq-LocateConstant ()
   "Locate a constant."
   (interactive)
-  (coq-ask-do "Locate" "Locate"))
+  (coq-ask-do "Locate" "Locate" nil 'coq-put-into-double-quote-if-notation))
 
 (defun coq-LocateLibrary ()
   "Locate a library."
   (interactive)
-  (coq-ask-do "Locate Library" "Locate Library"))
+  (coq-ask-do "Locate Library" "Locate Library" nil 'coq-put-into-double-quote-if-notation))
 
 (defun coq-LocateNotation ()
   "Locate a notation.  Put it automatically into quotes.
@@ -857,7 +995,10 @@ This is specific to `coq-mode'."
   (interactive)
   (coq-ask-do
    "Locate notation (ex: \'exists\' _ , _)" "Locate"
-   t 'coq-put-into-quotes))
+   nil 'coq-put-into-double-quote-if-notation))
+
+(defun coq-set-undo-limit (undos)
+  (proof-shell-invisible-command (format "Set Undo %s . " undos)))
 
 (defun coq-Pwd ()
   "Display the current Coq working directory."
@@ -875,25 +1016,25 @@ This is specific to `coq-mode'."
 (defun coq-Print-implicit ()
   "Ask for an ident and print the corresponding term."
   (interactive)
-  (coq-ask-do "Print Implicit" "Print Implicit"))
+  (coq-ask-do "Print Implicit" "Print Implicit" nil 'coq-put-into-double-quote-if-notation))
 
 (defun coq-Check (withprintingall)
   "Ask for a term and print its type.
 With flag Printing All if some prefix arg is given (C-u)."
   (interactive "P")
   (if withprintingall
-      (coq-ask-do-show-all "Check" "Check")
-    (coq-ask-do "Check" "Check")))
+      (coq-ask-do-show-all "Check" "Check" nil 'coq-put-into-double-quote-if-notation)
+    (coq-ask-do "Check" "Check" nil 'coq-put-into-double-quote-if-notation)))
 
 (defun coq-Check-show-implicits ()
   "Ask for a term and print its type."
   (interactive)
-  (coq-ask-do-show-implicits "Check" "Check"))
+  (coq-ask-do-show-implicits "Check" "Check" nil 'coq-put-into-double-quote-if-notation))
 
 (defun coq-Check-show-all ()
   "Ask for a term and print its type."
   (interactive)
-  (coq-ask-do-show-all "Check" "Check"))
+  (coq-ask-do-show-all "Check" "Check" nil 'coq-put-into-double-quote-if-notation))
 
 (defun coq-get-response-string-at (&optional pt)
   "Go forward from PT until reaching a 'response property, and return it.
@@ -984,7 +1125,12 @@ flag Printing All set."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun coq-guess-command-line (filename)
-  "Guess the right command line options to compile FILENAME using `make -n'."
+  "Guess the right command line options to compile FILENAME using `make -n'.
+This function is obsolete, the recommended way of setting the
+coqtop options is to use a _Coqproject file as described in coq
+documentation. ProofGeneral reads this file and sets compilation
+options according to its contents. See `coq-project-filename'. Per file configuration may
+then be set using local file variables."
   (if (local-variable-p 'coq-prog-name (current-buffer))
       coq-prog-name
     (let* ((dir (or (file-name-directory filename) "."))
@@ -1016,6 +1162,196 @@ flag Printing All set."
              "-emacs-U"))
         coq-prog-name))))
 
+
+(defcustom coq-use-project-file t
+  "If t, when opening a coq file read the dominating _CoqProject.
+If t when a coq file is opened, proofgeneral will look for a
+project file (see `coq-project-filename') somewhere in the
+current directory or its parents directory. If there is one, its
+content is read and used to determine the arguments that must be
+given to coqtop. In particular it sets the load path (including
+the -R lib options) (see `coq-load-path') ."
+  :type 'boolean
+  :group 'coq)
+
+(defcustom coq-project-filename "_CoqProject"
+  "The name of coq project file.
+The coq project file of a coq developpement (Cf Coq documentation
+on \"makefile generation\") should contain the arguments given to
+coq_makefile. In particular it contains the -I and -R
+options (one per line). If `coq-use-coqproject' is t (default)
+the content of this file will be used by proofgeneral to infer
+the `coq-load-path' and the `coq-prog-args' variables that set
+the coqtop invocation by proofgeneral. This is now the
+recommended way of configuring the coqtop invocation. Local file
+variables may still be used to override the coq project file's
+configuration. .dir-locals.el files also work and override
+project file settings."
+  :type 'string)
+
+
+(defun coq-find-project-file ()
+  "Return '(buf alreadyopen) where buf is the buffer visiting coq project file.
+alreadyopen is t if buffer already existed."
+  (let* (
+         (projectfiledir (locate-dominating-file buffer-file-name coq-project-filename)))
+    (when projectfiledir
+      (let* ((projectfile (expand-file-name coq-project-filename projectfiledir))
+             ;; we store this intermediate result to know if we have to kill
+             ;; the coq project buffer at the end
+             (projectbufferalreadyopen (find-buffer-visiting projectfile))
+             (projectbuffer (or projectbufferalreadyopen
+                                (find-file-noselect projectfile t t))))
+        (list projectbuffer projectbufferalreadyopen)))))
+
+;; No "." no "-" in coq module file names, but we do not check
+;; TODO: look exactly at what characters are allowed.
+(defconst coq-load-path--R-regexp
+  "\\_<-R\\s-+\\(?1:[^[:space:]]+\\)\\s-+\\(?2:[^[:space:]]+\\)")
+
+(defconst coq-load-path--Q-regexp
+  "\\_<-Q\\s-+\\(?1:[^[:space:]]+\\)\\s-+\\(?2:[^[:space:]]+\\)")
+
+;; second arg of -I is optional (and should become obsolete one day)
+(defconst coq-load-path--I-regexp
+  "\\_<-I\\s-+\\(?1:[^[:space:]]+\\)\\(?:[:space:]+\\(?2:[^[:space:]]+\\)\\)?")
+
+;(defconst coq-load-path--I-regexp "\\_<-I\\s-+\\(?1:[^[:space:]]+\\)")
+
+;; match-string 1 must contain the string to add to coqtop command line, so we
+;; ignore -arg, we use numbered subregexpr.
+(defconst coq-prog-args-regexp
+  "\\_<\\(?1:-opt\\|-byte\\)\\|-arg\\(?:[[:space:]]+\\(?1:[^ \t\n#]+\\)\\)?")
+
+(defun coq-read-option-from-project-file (projectbuffer regexp &optional dirprefix)
+  "look for occurrences of regexp in buffer projectbuffer and collect subexps.
+The returned sub-regexp are the one numbered 1 and 2 (other ones
+should be unnumbered). If there is only subexp 1 then it is added
+as is to the final list, if there are 1 and 2 then a list
+containing both is added to the final list. If optional DIRPREFIX
+is non nil, then options ar considered as directory or file names
+and will be made absolute from directory named DIRPREFIX. This
+allows to call coqtop from a subdirectory of the project."
+  (let ((opt nil))
+    (when projectbuffer
+      (with-current-buffer projectbuffer
+        (goto-char (point-min))
+        (while (re-search-forward regexp nil t)
+          (let* ((firstfname (match-string 1))
+                (second (match-string 2))
+                (first (if (null dirprefix) firstfname
+                         (expand-file-name firstfname dirprefix))))
+            (if second ; if second arg is "" (two doublequotes), it means empty string
+                (let ((sec (if (string-equal second "\"\"") "" second)))
+                  (if (string-match coq-load-path--R-regexp (match-string 0))
+                      (setq opt (cons (list first sec) opt))
+                    (setq opt (cons (list 'recnoimport first sec) opt))))
+              (setq opt (cons first opt))))))
+      (reverse opt))))
+
+;; Look for -R and -I options in the project buffer
+;; add the default "." too
+(defun coq-search-load-path (projectbuffer)
+  "Read project buffer and retrurn a value for `coq-load-path'."
+;;  no automatic insertion of "." here because some people want to do "-R . foo" so
+;;  let us avoid conflicts.
+  (coq-read-option-from-project-file
+   projectbuffer
+   (concat coq-load-path--R-regexp "\\|" coq-load-path--Q-regexp "\\|" coq-load-path--I-regexp)
+   (file-name-directory (buffer-file-name projectbuffer))))
+
+;; Look for other options (like -opt, -arg foo etc) in the project buffer
+;; adds the -emacs option too
+(defun coq-search-prog-args (projectbuffer)
+  "Read project buffer and retrurn a value for `coq-prog-args'"
+  (cons
+   "-emacs"
+   (coq-read-option-from-project-file projectbuffer coq-prog-args-regexp)))
+
+
+;; optional args allow to implement the precedence of dir/file local vars
+(defun coq-load-project-file-with-avoid (&optional avoidargs avoidpath)
+  (let* ((projectbuffer-aux (coq-find-project-file))
+         (projectbuffer (and projectbuffer-aux (car projectbuffer-aux)))
+         (no-kill (and projectbuffer-aux (car (cdr projectbuffer-aux)))))
+    (if (not projectbuffer-aux)
+        (message "Coq project file not detected.")
+      (unless avoidargs (setq coq-prog-args (coq-search-prog-args projectbuffer)))
+      (unless avoidpath (setq coq-load-path (coq-search-load-path projectbuffer)))
+      (let ((msg
+             (cond
+              ((and avoidpath avoidargs) "Coqtop args and load path")
+              (avoidpath "Coqtop load path")
+              (avoidargs "Coqtop args")
+              (t ""))))
+        (message
+         "Coq project file detected: %s%s." (buffer-file-name projectbuffer)
+         (if (or avoidpath avoidargs)
+             (concat "\n(" msg " overridden by dir/file local values)")
+           "")))
+      (unless no-kill (kill-buffer projectbuffer)))))
+
+
+
+(defun coq-load-project-file ()
+  "Set `coq-prog-args' and `coq-load-path' according to _CoqProject file.
+Obeys `coq-use-project-file'. Note that if a variable is already
+set by dir/file local variables, this function will not override
+its value.
+See `coq-project-filename' to change the name of the
+project file, and `coq-use-project-file' to disable this
+feature."
+  (when coq-use-project-file
+    ;; Let us reread dir/file local vars, in case the user mmodified them
+    (let* ((oldargs (assoc 'coq-prog-args file-local-variables-alist))
+           (oldpath (assoc 'coq-load-path file-local-variables-alist)))
+      (coq-load-project-file-with-avoid oldargs oldpath))))
+
+
+(defun coq-load-project-file-rehack ()
+  "Reread file/dir local vars and call `coq-load-project-file'.
+Does nothing if `coq-use-project-file' is nil.
+Warning: 
+"
+  (when coq-use-project-file
+    ;; Let us reread dir/file local vars, in case the user mmodified them
+    (hack-local-variables)
+    ;; Useless since coq-load-project-file is in hack-local-variables-hook:
+    ;;(coq-load-project-file)
+    ))
+
+
+;; Since coq-project-filename can be set via .dir-locals.el or file variable,
+;; we need to call coq-load-coq-project-file only *after* local variables are
+;; set. But coq-mode-hook is called BEFORE local variables are read. Therefore
+;; coq-load-coq-project-file is added to hack-local-variables-hook instead. To
+;; avoid adding for other modes , the setting is performed inside
+;; coq-mode-hook. This is described in www.emacswiki.org/emacs/LocalVariables
+
+;; TODO: also read COQBIN somewhere?
+;; Note: this does not need to be at a particular place in the hook, but we
+;; need to make this hook local.
+;; hack-local-variables-hook seems to hack local and dir local vars.
+(add-hook 'coq-mode-hook
+          '(lambda () (add-hook 'hack-local-variables-hook
+                                'coq-load-project-file
+                                nil t)))
+
+
+
+(defun coq-toggle-use-project-file ()
+  (interactive)
+  (setq coq-use-project-file (not coq-use-project-file))
+  (when coq-use-project-file (coq-load-project-file-rehack))
+  ;; FIXME What should we do when disabling project file? since
+  ;; local variables override project file anyway, reading them
+  ;; again is useless. Let us do nothing.
+  ;;(setq coq-load-path nil)
+  ;;(setq coq-prog-args nil)
+  ;;(coq-build-prog-args)
+  )
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; Holes mode switch
@@ -1040,22 +1376,62 @@ flag Printing All set."
 ;; *default* value to nil.
 (custom-set-default 'proof-output-tooltips nil)
 
+;; This seems xemacs only code, remove?
+(defconst coq-prettify-symbols-alist
+  '(("not"	. ?¬)
+    ;; ("/\\"	. ?∧)
+    ("/\\"	. ?⋀)
+    ;; ("\\/"	. ?∨)
+    ("\\/"	. ?⋁)
+    ;;("forall"	. ?∀)
+    ("forall"	. ?Π)
+    ("fun"	. ?λ)
+    ("->"	. ?→)
+    ("<-"	. ?←)
+    ("=>"	. ?⇒)
+    ;; ("~>"	. ?↝) ;; less desirable
+    ;; ("-<"	. ?↢) ;; Paterson's arrow syntax
+    ;; ("-<"	. ?⤙) ;; nicer but uncommon
+    ("::"	. ?∷)
+    ))
+
+
+;
+;(defun coq-is-at-cmd-first-line-p ()
+;  (save-excursion
+;    (let ((l1 (line-number-at-pos)))
+;      (coq-find-real-start)
+;      (equal l1 (line-number-at-pos)))))
+;
+
+;
+;(defun coq-indent-command ()
+;  (save-excursion
+;    (when (coq-is-at-cmd-first-line-p)
+;      (let ((kind (coq-back-to-indentation-prevline)))
+;        (if 
+;        (current-column))))))
+;
 
 (defun coq-mode-config ()
+  ;; SMIE needs this.
+  (set (make-local-variable 'parse-sexp-ignore-comments) t)
   ;; Coq error messages are thrown off by TAB chars.
   (set (make-local-variable 'indent-tabs-mode) nil)
   ;; Coq defninition never start by a parenthesis
   (set (make-local-variable 'open-paren-in-column-0-is-defun-start) nil)
+  ;; coq-mode colorize errors better than the generic mechanism
+  (setq proof-script-color-error-messages nil)
   (setq proof-terminal-string ".")
   (setq proof-script-command-end-regexp coq-script-command-end-regexp)
   (setq proof-script-parse-function 'coq-script-parse-function)
   (setq proof-script-comment-start "(*")
   (setq proof-script-comment-end "*)")
-  (make-local-variable 'comment-start-skip)
-  (setq comment-start-skip
-        (if (string-equal "" proof-script-comment-start)
-            (regexp-quote "\n") ;; end-of-line terminated comments
-          (regexp-quote proof-script-comment-start)))
+  (setq proof-script-insert-newlines nil)
+  (set (make-local-variable 'comment-start-skip)
+       (regexp-quote (if (string-equal "" proof-script-comment-start)
+                         "\n" ;; end-of-line terminated comments
+                       proof-script-comment-start)))
   (setq proof-unnamed-theorem-name "Unnamed_thm") ; Coq's default name
 
   (setq proof-assistant-home-page coq-www-home-page)
@@ -1083,6 +1459,8 @@ flag Printing All set."
         proof-state-preserving-p 'coq-state-preserving-p)
 
   (setq proof-query-identifier-command "Check %s.")
+  ;;TODO: from v8.5 this wold be better:
+  ;;(setq proof-query-identifier-command "About %s.")
 
   (setq proof-save-command-regexp coq-save-command-regexp
         proof-really-save-command-p 'coq-save-command-p ;pierre:deals with Proof <term>.
@@ -1091,21 +1469,23 @@ flag Printing All set."
 	proof-nested-undo-regexp coq-state-changing-commands-regexp
         proof-script-imenu-generic-expression coq-generic-expression)
 
-  (if (and coq-use-smie (fboundp 'smie-setup))
-      (smie-setup coq-smie-grammar #'coq-smie-rules
+  (when (fboundp 'smie-setup) ; always use smie, old indentation code removed
+    (smie-setup coq-smie-grammar #'coq-smie-rules
                   :forward-token #'coq-smie-forward-token
-                  :backward-token #'coq-smie-backward-token)
-    (require 'coq-indent)
-    (setq
-     ;; indentation is implemented in coq-indent.el
-     indent-line-function 'coq-indent-line
-     proof-indent-any-regexp      coq-indent-any-regexp
-     proof-indent-open-regexp     coq-indent-open-regexp
-     proof-indent-close-regexp    coq-indent-close-regexp)
+                  :backward-token #'coq-smie-backward-token))
 
-    (make-local-variable 'indent-region-function)
-    (setq indent-region-function 'coq-indent-region))
-
+  ;; old indentation code.
+  ;; (require 'coq-indent)
+  ;; (setq
+  ;;  ;; indentation is implemented in coq-indent.el
+  ;;  indent-line-function 'coq-indent-line
+  ;;  proof-indent-any-regexp      coq-indent-any-regexp
+  ;;  proof-indent-open-regexp     coq-indent-open-regexp
+  ;;  proof-indent-close-regexp    coq-indent-close-regexp)
+  ;; (make-local-variable 'indent-region-function)
+  ;; (setq indent-region-function 'coq-indent-region)
+  
+  
 
   ;; span menu
   (setq proof-script-span-context-menu-extensions 'coq-create-span-menu)
@@ -1129,24 +1509,25 @@ flag Printing All set."
    proof-tree-configured t
    proof-tree-get-proof-info 'coq-proof-tree-get-proof-info
    proof-tree-find-begin-of-unfinished-proof
-     'coq-find-begin-of-unfinished-proof)   
+     'coq-find-begin-of-unfinished-proof)
 
   (proof-config-done)
 
   ;; outline
-  (make-local-variable 'outline-regexp)
-  (setq outline-regexp coq-outline-regexp)
-
-  (make-local-variable 'outline-heading-end-regexp)
-  (setq outline-heading-end-regexp coq-outline-heading-end-regexp)
+  (set (make-local-variable 'outline-regexp) coq-outline-regexp)
+  (set (make-local-variable 'outline-heading-end-regexp)
+       coq-outline-heading-end-regexp)
 
   ;; tags
   (if (file-exists-p coq-tags)
       (set (make-local-variable 'tags-table-list)
            (cons coq-tags tags-table-list)))
   
-  (set (make-local-variable
-        'blink-matching-paren-dont-ignore-comments) t)
+  (set (make-local-variable 'blink-matching-paren-dont-ignore-comments) t)
+
+  (when coq-may-use-prettify
+    (set (make-local-variable 'prettify-symbols-alist)
+         coq-prettify-symbols-alist))
 
   (setq proof-cannot-reopen-processed-files nil)
 
@@ -1170,8 +1551,7 @@ flag Printing All set."
 
    ;; FIXME: ideally, the eager annotation should just be a single "special" char,
    ;; this requires changes in Coq.
-   proof-shell-eager-annotation-start 
-   "\376\\|\\[Reinterning\\|Warning:\\|TcDebug \\|<infomsg>"
+   proof-shell-eager-annotation-start coq-shell-eager-annotation-start
    proof-shell-eager-annotation-start-length 32
 
    proof-shell-interactive-prompt-regexp "TcDebug "
@@ -1211,6 +1591,7 @@ flag Printing All set."
    proof-tree-ignored-commands-regexp coq-proof-tree-ignored-commands-regexp
    proof-tree-navigation-command-regexp coq-navigation-command-regexp
    proof-tree-cheating-regexp coq-proof-tree-cheating-regexp
+   proof-tree-new-layer-command-regexp coq-proof-tree-new-layer-command-regexp
    proof-tree-current-goal-regexp coq-proof-tree-current-goal-regexp
    proof-tree-update-goal-regexp coq-proof-tree-update-goal-regexp
    proof-tree-existential-regexp coq-proof-tree-existential-regexp
@@ -1220,14 +1601,14 @@ flag Printing All set."
                         coq-proof-tree-existentials-state-end-regexp
    proof-tree-additional-subgoal-ID-regexp
                               coq-proof-tree-additional-subgoal-ID-regexp
-   proof-tree-proof-finished-regexp coq-proof-tree-proof-finished-regexp
+   proof-tree-branch-finished-regexp coq-proof-tree-branch-finished-regexp
    proof-tree-extract-instantiated-existentials
      'coq-extract-instantiated-existentials
    proof-tree-show-sequent-command 'coq-show-sequent-command
+   proof-tree-find-undo-position 'coq-proof-tree-find-undo-position
    )
         
   (proof-shell-config-done))
-
 
 
 (proof-eval-when-ready-for-assistant
@@ -1247,16 +1628,15 @@ flag Printing All set."
   (setq pg-goals-change-goal "Show %s . ")
   (setq pg-goals-error-regexp coq-error-regexp)
   (coq-init-syntax-table)
-  (setq proof-goals-font-lock-keywords coq-font-lock-keywords-1)
+  (setq proof-goals-font-lock-keywords coq-goals-font-lock-keywords)
   (proof-goals-config-done))
 
 (defun coq-response-config ()
   (coq-init-syntax-table)
-  (setq proof-response-font-lock-keywords coq-font-lock-keywords-1)
+  (setq proof-response-font-lock-keywords coq-response-font-lock-keywords)
   ;; The line wrapping in this buffer just seems to make it less readable.
   (setq truncate-lines t)
   (proof-response-config-done))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -1274,7 +1654,7 @@ flag Printing All set."
 
 
 (defpacustom hide-additional-subgoals nil
-  "Only show the current goal, hiding additional subgoals."
+  "Show all subgoals if off, show only the current goal if on."
   :type 'boolean
   :safe 'booleanp
   :eval (coq-hide-additional-subgoals-switch))
@@ -1306,825 +1686,9 @@ flag Printing All set."
 
 (defpacustom time-commands nil
   "Whether to display timing information for each command."
-  :type 'boolean)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;; Multiple file handling revisited
-;;
-
-;; user options and variables
-
-(defgroup coq-auto-compile ()
-  "Customization for automatic compilation of required files"
-  :group 'coq
-  :package-version '(ProofGeneral . "4.1"))
-
-(defpacustom compile-before-require nil
-  "If non-nil, check dependencies of required modules and compile if necessary.
-If non-nil ProofGeneral intercepts \"Require\" commands and checks if the
-required library module and its dependencies are up-to-date. If not, they
-are compiled from the sources before the \"Require\" command is processed.
-
-This option can be set/reset via menu
-`Coq -> Settings -> Compile Before Require'."
   :type 'boolean
-  :safe 'booleanp
-  :group 'coq-auto-compile)
+  :eval (coq-time-commands-switch))
 
-(defcustom coq-compile-command ""
-  "External compilation command. If empty ProofGeneral compiles itself.
-If unset (the empty string) ProofGeneral computes the dependencies of
-required modules with coqdep and compiles as necessary. This internal
-dependency checking does currently not handle ML modules.
-
-If a non-empty string, the denoted command is called to do the
-dependency checking and compilation. Before executing this
-command the following keys are substituted as follows:
-  %p  the (physical) directory containing the source of
-      the required module
-  %o  the Coq object file in the physical directory that will
-      be loaded
-  %s  the Coq source file in the physical directory whose
-      object will be loaded
-  %q  the qualified id of the \"Require\" command
-  %r  the source file containing the \"Require\"
-
-For instance, \"make -C %p %o\" expands to \"make -C bar foo.vo\"
-when module \"foo\" from directory \"bar\" is required.
-
-After the substitution the command can be changed in the
-minibuffer if `coq-confirm-external-compilation' is t."
-  :type 'string
-  :safe (lambda (v)
-          (and (stringp v)
-               (or (not (boundp 'coq-confirm-external-compilation))
-                   coq-confirm-external-compilation)))
-  :group 'coq-auto-compile)
-
-(defconst coq-compile-substitution-list
-  '(("%p" physical-dir)
-    ("%o" module-object)
-    ("%s" module-source)
-    ("%q" qualified-id)
-    ("%r" requiring-file))
-  "Substitutions for `coq-compile-command'.
-Value must be a list of substitutions, where each substitution is
-a 2-element list. The first element of a substitution is the
-regexp to substitute, the second the replacement. The replacement
-is evaluated before passing it to `replace-regexp-in-string', so
-it might be a string, or one of the symbols 'physical-dir,
-'module-object, 'module-source, 'qualified-id and
-'requiring-file, which are bound to, respectively, the physical
-directory containing the source file, the Coq object file in
-'physical-dir that will be loaded, the Coq source file in
-'physical-dir whose object will be loaded, the qualified module
-identifier that occurs in the \"Require\" command, and the file
-that contains the \"Require\".")
-
-(defcustom coq-load-path nil
-  "Non-standard coq library load path.
-This list specifies the LoadPath extension for coqdep, coqc and
-coqtop. Usually, the elements of this list are strings (for
-\"-I\") or lists of two strings (for \"-R\" dir \"-as\" path).
-
-The possible forms of elements of this list correspond to the 3
-forms of include options ('-I' and '-R'). An element can be
-
-  - A string, specifying a directory to be mapped to the empty
-    logical path ('-I').
-  - A list of the form '(rec dir path)' (where dir and path are
-    strings) specifying a directory to be recursively mapped to the
-    logical path 'path' ('-R dir -as path').
-  - A list of the form '(norec dir path)', specifying a directory
-    to be mapped to the logical path 'path' ('-I dir -as path').
-
-For convenience the symbol 'rec' can be omitted and entries of
-the form '(dir path)' are interpreted as '(rec dir path)'.
-
-Under normal circumstances this list does not need to
-contain the coq standard library or \".\" for the current
-directory (see `coq-load-path-include-current')."
-  :type '(repeat (choice (string :tag "simple directory without path (-I)")
-                         (list :tag
-                               "recursive directory with path (-R ... -as ...)"
-                               (const rec)
-                               (string :tag "directory")
-                               (string :tag "log path"))
-                         (list :tag
-                               "simple directory with path (-I ... -as ...)"
-                               (const nonrec)
-                               (string :tag "directory")
-                               (string :tag "log path"))))
-  :safe 'coq-load-path-safep
-  :group 'coq-auto-compile)
-
-(defcustom coq-compile-auto-save 'ask-coq
-  "Buffers to save before checking dependencies for compilation.
-There are two orthogonal choices: Firstly one can save all or only the coq
-buffers, where coq buffers means all buffers in coq mode except the current
-buffer. Secondly, Emacs can ask about each such buffer or save all of them
-unconditionally.
-
-This makes four permitted values: 'ask-coq to confirm saving all
-modified Coq buffers, 'ask-all to confirm saving all modified
-buffers, 'save-coq to save all modified Coq buffers without
-confirmation and 'save-all to save all modified buffers without
-confirmation."
-  :type
-  '(radio
-    (const :tag "ask for each coq-mode buffer, except the current buffer"
-           ask-coq)
-    (const :tag "ask for all buffers" ask-all)
-    (const
-     :tag
-     "save all coq-mode buffers except the current buffer without confirmation"
-     save-coq)
-    (const :tag "save all buffers without confirmation" save-all))
-  :safe (lambda (v) (member v '(ask-coq ask-all save-coq save-all)))
-  :group 'coq-auto-compile)
-
-(defcustom coq-lock-ancestors t
-  "If non-nil, lock ancestor module files.
-If external compilation is used (via `coq-compile-command') then
-only the direct ancestors are locked. Otherwise all ancestors are
-locked when the \"Require\" command is processed."
-  :type 'boolean
-  :safe 'booleanp
-  :group 'coq-auto-compile)
-
-(defpacustom confirm-external-compilation t
-  "If set let user change and confirm the compilation command.
-Otherwise start the external compilation without confirmation.
-
-This option can be set/reset via menu
-`Coq -> Settings -> Confirm External Compilation'."
-  :type 'boolean
-  :group 'coq-auto-compile)
-
-(defcustom coq-load-path-include-current t
-  "If `t' let coqdep search the current directory too.
-Should be `t' for normal users. If `t' pass \"-I dir\" to coqdep when
-processing files in directory \"dir\" in addition to any entries
-in `coq-load-path'."
-  :type 'boolean
-  :safe 'booleanp
-  :group 'coq-auto-compile)
-
-(defcustom coq-compile-ignored-directories nil
-  "Directories in which ProofGeneral should not compile modules.
-List of regular expressions for directories in which ProofGeneral
-should not compile modules. If a library file name matches one
-of the regular expressions in this list then ProofGeneral does
-neither compile this file nor check its dependencies for
-compilation. It makes sense to include non-standard coq library
-directories here if they are not changed and if they are so big
-that dependency checking takes noticeable time."
-  :type '(repeat regexp)
-  :safe (lambda (v) (every 'stringp v))
-  :group 'coq-auto-compile)
-
-(defcustom coq-compile-ignore-library-directory t
-  "If non-nil, ProofGeneral does not compile modules from the coq library.
-Should be `t' for normal coq users. If `nil' library modules are
-compiled if their sources are newer.
-
-This option has currently no effect, because Proof General uses
-coqdep to translate qualified identifiers into library file names
-and coqdep does not output dependencies in the standard library."
-  :type 'boolean
-  :safe 'booleanp
-  :group 'coq-auto-compile)
-
-(defcustom coq-coqdep-error-regexp
-  (concat "^\\*\\*\\* Warning: in file .*, library .* is required "
-          "and has not been found")
-  "Regexp to match errors in the output of coqdep.
-coqdep indicates errors not always via a non-zero exit status,
-but sometimes only via printing warnings. This regular expression
-is used for recognizing error conditions in the output of
-coqdep (when coqdep terminates with exit status 0). Its default
-value matches the warning that some required library cannot be
-found on the load path and ignores the warning for finding a
-library at multiple places in the load path. If you want to turn
-the latter condition into an error, then set this variable to
-\"^\\*\\*\\* Warning\"."
-  :type 'string
-  :safe 'stringp
-  :group 'coq-auto-compile)
-
-(defconst coq-require-command-regexp
-  "^Require[ \t\n]+\\(Import\\|Export\\)?[ \t\n]*"
-  "Regular expression matching Require commands in Coq.
-Should match \"Require\" with its import and export variants up to (but not
-including) the first character of the first required module. The required
-modules are matched separately with `coq-require-id-regexp'")
-
-(defconst coq-require-id-regexp
-  "[ \t\n]*\\([A-Za-z0-9_']+\\(\\.[A-Za-z0-9_']+\\)*\\)[ \t\n]*"
-  "Regular expression matching one Coq module identifier.
-Should match precisely one complete module identifier and surrounding
-white space. The module identifier must be matched with group number 1.
-Note that the trailing dot in \"Require A.\" is not part of the module
-identifier and should therefore not be matched by this regexp.")
-
-(defvar coq-compile-history nil
-  "History of external Coq compilation commands.")
-
-(defvar coq-compile-response-buffer "*coq-compile-response*"
-  "Name of the buffer to display error messages from coqc and coqdep.")
-
-
-(defvar coq-debug-auto-compilation nil
-  "*Display more messages during compilation")
-
-
-;; basic utilities
-
-(defun time-less-or-equal (time-1 time-2)
-  "Return `t' if time value time-1 is earlier or equal to time-2.
-A time value is a list of two integers as returned by `file-attributes'.
-The first integer contains the upper 16 bits and the second the lower
-16 bits of the time."
-  (or (time-less-p time-1 time-2)
-      (equal time-1 time-2)))
-
-(defun coq-max-dep-mod-time (dep-mod-times)
-  "Return the maximum in DEP-MOD-TIMES.
-Argument DEP-MOD-TIMES is a list where each element is either a
-time value (see `time-less-or-equal') or 'just-compiled. The
-function returns the maximum of the elements in DEP-MOD-TIMES,
-where 'just-compiled is considered the greatest time value. If
-DEP-MOD-TIMES is empty it returns nil."
-  (let ((max nil))
-    (while dep-mod-times
-      (cond
-       ((eq (car dep-mod-times) 'just-compiled)
-        (setq max 'just-compiled
-              dep-mod-times nil))
-       ((eq max nil)
-        (setq max (car dep-mod-times)))
-       ((time-less-p max (car dep-mod-times))
-        (setq max (car dep-mod-times))))
-      (setq dep-mod-times (cdr-safe dep-mod-times)))
-    max))
-
-
-;; safety predicate for coq-load-path
-
-(defun coq-load-path-safep (path)
-  "Check if PATH is a safe value for `coq-load-path'."
-  (and
-   (listp path)
-   (every
-    (lambda (entry)
-      (or (stringp entry)
-          (and (listp entry)
-               (eq (car entry) 'rec)
-               (every 'stringp (cdr entry))
-               (equal (length entry) 3))
-          (and (listp entry)
-               (eq (car entry) 'nonrec)
-               (every 'stringp (cdr entry))
-               (equal (length entry) 3))
-          (and (listp entry)
-               (every 'stringp entry)
-               (equal (length entry) 2))))
-    path)))
-
-;; Compute command line for starting coqtop
-
-(defun coq-prog-args ()
-  ;; coqtop always adds the current directory to the LoadPath, so don't
-  ;; include it in the -I options.
-  (let ((coq-load-path-include-current nil))
-    (append coq-prog-args (coq-include-options nil))))
-
-
-;; ancestor (un-)locking
-
-(defun coq-lock-ancestor (span ancestor-src)
-  "Lock ancestor ANCESTOR-SRC and register it in SPAN.
-Lock only if `coq-lock-ancestor' is non-nil. Further, do nothing,
-if ANCESTOR-SRC is already a member of
-`proof-included-files-list'. Otherwise ANCESTOR-SRC is locked and
-registered in the 'coq-locked-ancestors property of the SPAN to
-properly unlock ANCESTOR-SRC on retract."
-  (if coq-lock-ancestors
-      (let ((true-ancestor-src (file-truename ancestor-src)))
-        (unless (member true-ancestor-src proof-included-files-list)
-          (proof-register-possibly-new-processed-file true-ancestor-src)
-          (span-set-property
-           span 'coq-locked-ancestors
-           (cons true-ancestor-src
-                 (span-property span 'coq-locked-ancestors)))))))
-
-(defun coq-unlock-ancestor (ancestor-src)
-  "Unlock ANCESTOR-SRC."
-  (let* ((true-ancestor (file-truename ancestor-src)))
-    (setq proof-included-files-list
-          (delete true-ancestor proof-included-files-list))
-    (proof-restart-buffers (proof-files-to-buffers (list true-ancestor)))))
-
-(defun coq-unlock-all-ancestors-of-span (span)
-  "Unlock all ancestors that have been locked when SPAN was asserted."
-  (mapc 'coq-unlock-ancestor (span-property span 'coq-locked-ancestors))
-  (span-set-property span 'coq-locked-ancestors ()))
-
-;; handle Require commands when queue is extended
-
-(defun coq-compile-ignore-file (lib-obj-file)
-  "Check whether ProofGeneral should handle compilation of LIB-OBJ-FILE.
-Return `t' if ProofGeneral should skip LIB-OBJ-FILE and `nil' if
-ProofGeneral should handle the file. For normal users it does, for instance,
-not make sense to let ProofGeneral check if the coq standard library
-is up-to-date."
-  (or
-   (and
-    coq-compile-ignore-library-directory
-    (eq (compare-strings coq-library-directory 0 nil
-                         lib-obj-file 0 (length coq-library-directory))
-        t)
-    (if coq-debug-auto-compilation
-        (message "Ignore lib file %s" lib-obj-file))
-    t)
-   (if (some
-          (lambda (dir-regexp) (string-match dir-regexp lib-obj-file))
-          coq-compile-ignored-directories)
-       (progn
-         (if coq-debug-auto-compilation
-             (message "Ignore %s" lib-obj-file))
-         t)
-     nil)))
-
-(defun coq-library-src-of-obj-file (lib-obj-file)
-  "Return source file name for LIB-OBJ-FILE.
-Chops off the last character of LIB-OBJ-FILE to convert \"x.vo\" to \"x.v\"."
-  (substring lib-obj-file 0 (- (length lib-obj-file) 1)))
-
-(defun coq-option-of-load-path-entry (entry)
-  "Translate a single element from `coq-load-path' into options.
-See `coq-load-path' for the possible forms of entry and to which
-options they are translated."
-  (cond
-   ((stringp entry)
-    (list "-I" (expand-file-name entry)))
-   ((eq (car entry) 'nonrec)
-    (list "-I" (expand-file-name (nth 1 entry)) "-as" (nth 2 entry)))
-   (t
-    (if (eq (car entry) 'rec)
-        (setq entry (cdr entry)))
-    (list "-R" (expand-file-name (car entry)) "-as" (nth 1 entry)))))
-
-(defun coq-include-options (file)
-  "Build the list of include options for coqc, coqdep and coqtop.
-The options list includes all entries from `coq-load-path'
-prefixed with suitable options and, if
-`coq-load-path-include-current' is enabled, the directory base of
-FILE. The resulting list is fresh for every call, callers can
-append more arguments with `nconc'.
-
-FILE should be an absolute file name. It can be nil if
-`coq-load-path-include-current' is nil."
-  (let ((result nil))
-    (unless (coq-load-path-safep coq-load-path)
-      (error "Invalid value in coq-load-path"))
-    (when coq-load-path
-      (setq result (coq-option-of-load-path-entry (car coq-load-path)))
-      (dolist (entry (cdr coq-load-path))
-        (nconc result (coq-option-of-load-path-entry entry))))
-    (if coq-load-path-include-current
-        (setq result
-              (cons "-I" (cons (file-name-directory file) result))))
-    result))
-
-(defun coq-init-compile-response-buffer (command)
-  "Initialize the buffer for the compilation output.
-If `coq-compile-response-buffer' exists, empty it. Otherwise
-create a buffer with name `coq-compile-response-buffer', put
-it into `compilation-mode' and store it in
-`coq-compile-response-buffer' for later use. Argument COMMAND is
-the command whose output will appear in the buffer."
-  (let ((buffer-object (get-buffer coq-compile-response-buffer)))
-    (if buffer-object
-        (let ((inhibit-read-only t))
-          (with-current-buffer buffer-object
-            (erase-buffer)))
-      (setq buffer-object
-            (get-buffer-create coq-compile-response-buffer))
-      (with-current-buffer buffer-object
-        (compilation-mode)))
-    ;; I don't really care if somebody gets the right mode when
-    ;; he saves and reloads this buffer. However, error messages in
-    ;; the first line are not found for some reason ...
-    (let ((inhibit-read-only t))
-      (with-current-buffer buffer-object
-        (insert "-*- mode: compilation; -*-\n\n" command "\n")))))
-
-(defun coq-display-compile-response-buffer ()
-  "Display the errors in `coq-compile-response-buffer'."
-  (with-current-buffer coq-compile-response-buffer
-    ;; fontification enables the error messages
-    (let ((font-lock-verbose nil)) ; shut up font-lock messages
-      (font-lock-fontify-buffer)))
-  ;; Make it so the next C-x ` will use this buffer.
-  (setq next-error-last-buffer (get-buffer coq-compile-response-buffer))
-  (let ((window (display-buffer coq-compile-response-buffer)))
-    (if proof-shrink-windows-tofit
-        (save-excursion
-          (save-selected-window
-            (proof-resize-window-tofit window))))))
-
-(defun coq-get-library-dependencies (lib-src-file &optional command-intro)
-  "Compute dependencies of LIB-SRC-FILE.
-Invoke \"coqdep\" on LIB-SRC-FILE and parse the output to
-compute the compiled coq library object files on which
-LIB-SRC-FILE depends. The return value is either a string or a
-list. If it is a string then an error occurred and the string is
-the core of the error message. If the return value is a list no
-error occurred and the returned list is the (possibly empty) list
-of file names LIB-SRC-FILE depends on.
-
-If an error occurs this funtion displays
-`coq-compile-response-buffer' with the complete command and its
-output. The optional argument COMMAND-INTRO is only used in the
-error case. It is prepended to the displayed command.
-
-LIB-SRC-FILE should be an absolute file name. If it is, the
-dependencies are absolute too and the simplified treatment of
-`coq-load-path-include-current' in `coq-include-options' won't
-break."
-  (let ((coqdep-arguments
-         (nconc (coq-include-options lib-src-file) (list lib-src-file)))
-        coqdep-status coqdep-output)
-    (if coq-debug-auto-compilation
-        (message "call coqdep arg list: %s" coqdep-arguments))
-    (with-temp-buffer
-      (setq coqdep-status
-            (apply 'call-process
-                   coq-dependency-analyzer nil (current-buffer) nil
-                   coqdep-arguments))
-      (setq coqdep-output (buffer-string)))
-    (if coq-debug-auto-compilation
-        (message "coqdep status %s, output on %s: %s"
-                 coqdep-status lib-src-file coqdep-output))
-    (if (or
-         (not (eq coqdep-status 0))
-         (string-match coq-coqdep-error-regexp coqdep-output))
-        (let* ((this-command (cons coq-dependency-analyzer coqdep-arguments))
-               (full-command (if command-intro
-                                 (cons command-intro this-command)
-                               this-command)))
-          ;; display the error
-          (coq-init-compile-response-buffer
-           (mapconcat 'identity full-command " "))
-          (let ((inhibit-read-only t))
-            (with-current-buffer coq-compile-response-buffer
-              (insert coqdep-output)))
-          (coq-display-compile-response-buffer)
-          "unsatisfied dependencies")
-      (if (string-match ": \\(.*\\)$" coqdep-output)
-          (cdr-safe (split-string (match-string 1 coqdep-output)))
-        ()))))
-
-(defun coq-compile-library (src-file)
-  "Recompile coq library SRC-FILE.
-Display errors in buffer `coq-compile-response-buffer'."
-  (message "Recompile %s" src-file)
-  (let ((coqc-arguments
-         (nconc (coq-include-options src-file) (list src-file)))
-        coqc-status)
-    (coq-init-compile-response-buffer
-     (mapconcat 'identity (cons coq-compiler coqc-arguments) " "))
-    (if coq-debug-auto-compilation
-        (message "call coqc arg list: %s" coqc-arguments))
-    (setq coqc-status
-          (apply 'call-process
-           coq-compiler nil coq-compile-response-buffer t coqc-arguments))
-    (if coq-debug-auto-compilation
-        (message "compilation %s exited with %s, output |%s|"
-                 src-file coqc-status
-                 (with-current-buffer coq-compile-response-buffer
-                   (buffer-string))))
-    (unless (eq coqc-status 0)
-      (coq-display-compile-response-buffer)
-      (let ((terminated-text (if (numberp coqc-status)
-                                 "terminated with exit status"
-                               "was terminated by signal")))
-        (error "ERROR: Recompiling coq library %s %s %s"
-               src-file terminated-text coqc-status)))))
-
-(defun coq-compile-library-if-necessary (max-dep-obj-time src obj)
-  "Recompile SRC to OBJ if necessary.
-This function compiles SRC to the coq library object file OBJ
-if one of the following conditions is true:
-- a dependency has just been compiled
-- OBJ does not exist
-- SRC is newer than OBJ
-- OBJ is older than the the youngest object file of the dependencies.
-
-Argument MAX-DEP-OBJ-TIME provides the information about the
-dependencies. It is either
-- 'just-compiled if one of the dependencies of SRC has just
-  been compiled
-- the time value (see`time-less-or-equal') of the youngest (most
-  recently created) object file among the dependencies
-- nil if there are no dependencies, or if they are all ignored
-
-If this function decides to compile SRC to OBJ it returns
-'just-compiled. Otherwise it returns the modification time of
-OBJ.
-
-Note that file modification times inside Emacs have only a
-precisision of 1 second. To avoid spurious recompilations we do
-not recompile if the youngest object file of the dependencies and
-OBJ have identical modification times."
-  (let (src-time obj-time)
-    (if (eq max-dep-obj-time 'just-compiled)
-        (progn
-          (coq-compile-library src)
-          'just-compiled)
-      (setq src-time (nth 5 (file-attributes src)))
-      (setq obj-time (nth 5 (file-attributes obj)))
-      (if (or
-           (not obj-time)                     ; obj does not exist
-           (time-less-or-equal obj-time src-time) ; src is newer
-           (and
-            max-dep-obj-time            ; there is a youngest dependency
-                                        ; which is newer than obj
-            (time-less-p obj-time max-dep-obj-time)))
-          (progn
-            (coq-compile-library src)
-            'just-compiled)
-        (if coq-debug-auto-compilation
-            (message "Skip compilation of %s" src))
-        obj-time))))
-
-(defun coq-make-lib-up-to-date (coq-obj-hash span lib-obj-file)
-  "Make library object file LIB-OBJ-FILE up-to-date.
-Check if LIB-OBJ-FILE and all it dependencies are up-to-date
-compiled coq library objects. Recompile the necessary objects, if
-not. This function returns 'just-compiled if it compiled
-LIB-OBJ-FILE. Otherwise it returns the modification time of
-LIB-OBJ-FILE as time value (see `time-less-or-equal').
-
-Either LIB-OBJ-FILE or its source file (or both) must exist when
-entering this function.
-
-Argument SPAN is the span of the \"Require\" command.
-LIB-OBJ-FILE and its dependencies are locked and registered in
-the span for for proper unlocking on retract.
-
-Argument COQ-OBJ-HASH remembers the return values of this
-function."
-  (let ((result (gethash lib-obj-file coq-obj-hash)))
-    (if result
-        (progn
-          (if coq-debug-auto-compilation
-              (message "Checked %s already" lib-obj-file))
-          result)
-      ;; lib-obj-file has not been checked -- do it now
-      (message "Check %s" lib-obj-file)
-      (if (coq-compile-ignore-file lib-obj-file)
-          ;; return minimal time for ignored files
-          (setq result '(0 0))
-        (let* ((lib-src-file
-                (expand-file-name (coq-library-src-of-obj-file lib-obj-file)))
-               dependencies deps-mod-time)
-          (if (file-exists-p lib-src-file)
-              ;; recurse into dependencies now
-              (progn
-                (setq dependencies (coq-get-library-dependencies lib-src-file))
-                (if (stringp dependencies)
-                    (error "File %s has %s" lib-src-file dependencies))
-                (setq deps-mod-time
-                      (mapcar
-                       (lambda (dep)
-                         (coq-make-lib-up-to-date coq-obj-hash span dep))
-                       dependencies))
-                (setq result
-                      (coq-compile-library-if-necessary
-                       (coq-max-dep-mod-time deps-mod-time)
-                       lib-src-file lib-obj-file)))
-            (message "coq-auto-compile: no source file for %s" lib-obj-file)
-            (setq result
-                  ;; 5 value: last modification time
-                  (nth 5 (file-attributes lib-obj-file))))
-          (coq-lock-ancestor span lib-src-file)))
-      ;; at this point the result value has been determined
-      ;; store it in the hash then
-      (puthash lib-obj-file result coq-obj-hash)
-      result)))
-
-(defun coq-auto-compile-externally (span qualified-id absolute-module-obj-file)
-  "Make MODULE up-to-date according to `coq-compile-command'.
-Start a compilation to make ABSOLUTE-MODULE-OBJ-FILE up-to-date.
-The compilation command is derived from `coq-compile-command' by
-substituting certain keys, see `coq-compile-command' for details.
-If `coq-confirm-external-compilation' is t then the user
-must confirm the external command in the minibuffer, otherwise
-the command is executed without confirmation.
-
-Argument SPAN is the span of the \"Require\" command. The
-ancestor ABSOLUTE-MODULE-OBJ-FILE is locked and registered in the
-span for for proper unlocking on retract.
-
-This function uses the low-level interface `compilation-start',
-therefore the customizations for `compile' do not apply."
-  (unless (coq-compile-ignore-file absolute-module-obj-file)
-    (let* ((local-compile-command coq-compile-command)
-           (physical-dir (file-name-directory absolute-module-obj-file))
-           (module-object (file-name-nondirectory absolute-module-obj-file))
-           (module-source (coq-library-src-of-obj-file module-object))
-           (requiring-file buffer-file-name))
-      (mapc
-       (lambda (substitution)
-         (setq local-compile-command
-               (replace-regexp-in-string
-                (car substitution) (eval (car (cdr substitution)))
-                local-compile-command)))
-       coq-compile-substitution-list)
-      (if coq-confirm-external-compilation
-          (setq local-compile-command
-                (read-shell-command
-                 "Coq compile command: " local-compile-command
-                 (if (equal (car coq-compile-history) local-compile-command)
-                     '(coq-compile-history . 1)
-                   'coq-compile-history))))
-      ;; buffers have already been saved before we entered this function
-      ;; the next line is probably necessary to make recompile work
-      (setq-default compilation-directory default-directory)
-      (compilation-start local-compile-command)
-      (coq-lock-ancestor
-       span
-       (coq-library-src-of-obj-file absolute-module-obj-file)))))
-
-(defun coq-map-module-id-to-obj-file (module-id span)
-  "Map MODULE-ID to the appropriate coq object file.
-The mapping depends of course on `coq-load-path'. The current
-implementation invokes coqdep with a one-line require command.
-This is probably slower but much simpler than modelling coq file
-loading inside ProofGeneral. Argument SPAN is only used for error
-handling. It provides the location information of MODULE-ID for a
-decent error message.
-
-A peculiar consequence of the current implementation is that this
-function returns () if MODULE-ID comes from the standard library."
-  (let ((coq-load-path
-         (if coq-load-path-include-current
-             (cons default-directory coq-load-path)
-           coq-load-path))
-        (coq-load-path-include-current nil)
-        (temp-require-file (make-temp-file "ProofGeneral-coq" nil ".v"))
-        (coq-string (concat "Require " module-id "."))
-        result)
-    (unwind-protect
-        (progn
-          (with-temp-file temp-require-file
-            (insert coq-string))
-          (setq result
-                (coq-get-library-dependencies
-                 temp-require-file
-                 (concat "echo \"" coq-string "\" > " temp-require-file))))
-      (delete-file temp-require-file))
-    (if (stringp result)
-        ;; Error handling: coq-get-library-dependencies was not able to
-        ;; translate module-id into a file name. We insert now a faked error
-        ;; message into coq-compile-response-buffer to make next-error happy.
-        (let ((error-message
-               (format "Cannot find library %s in loadpath" module-id))
-              (inhibit-read-only t))
-          ;; Writing a message into coq-compile-response-buffer for next-error
-          ;; does currently not work. We do have exact position information
-          ;; about the span, but we don't know how much white space there is
-          ;; between the start of the span and the start of the command string.
-          ;; Check that coq-compile-response-buffer is a valid buffer!
-          ;; (with-current-buffer coq-compile-response-buffer
-          ;;   (insert
-          ;;    (format "File \"%s\", line %d\n%s.\n"
-          ;;            (buffer-file-name (span-buffer span))
-          ;;            (with-current-buffer (span-buffer span)
-          ;;              (line-number-at-pos (span-start span)))
-          ;;            error-message)))
-          ;; (coq-display-compile-response-buffer)
-          (error error-message)))
-    (assert (<= (length result) 1)
-            "Internal error in coq-map-module-id-to-obj-file")
-    (car-safe result)))
-
-(defun coq-check-module (coq-object-local-hash-symbol span module-id)
-  "Locate MODULE-ID and compile if necessary.
-If `coq-compile-command' is not nil the whole task of checking which
-modules need compilation and the compilation itself is done by an external
-process. If `coq-compile-command' is nil ProofGeneral computes the
-dependencies with \"coqdep\" and compiles modules as necessary. This internal
-checking does currently not handle ML modules.
-
-Argument SPAN is the span of the \"Require\" command. Locked
-ancestors are registered in its 'coq-locked-ancestors property
-for proper unlocking on retract.
-
-Argument COQ-OBJECT-LOCAL-HASH-SYMBOL provides a place to store
-the coq-obj-hash, which is used during internal
-compilation (see `coq-make-lib-up-to-date'). This way one hash
-will be used for all \"Require\" commands added at once to the
-queue."
-  (let ((module-obj-file (coq-map-module-id-to-obj-file module-id span)))
-    ;; coq-map-module-id-to-obj-file currently returns () for
-    ;; standard library modules!
-    (when module-obj-file
-      (if (> (length coq-compile-command) 0)
-          (coq-auto-compile-externally span module-id module-obj-file)
-        (unless (symbol-value coq-object-local-hash-symbol)
-          (set coq-object-local-hash-symbol (make-hash-table :test 'equal)))
-        (coq-make-lib-up-to-date (symbol-value coq-object-local-hash-symbol)
-                                 span module-obj-file)))))
-
-(defvar coq-process-require-current-buffer
-  "Used in `coq-compile-save-some-buffers' and `coq-compile-save-buffer-filter'.
-This only locally used variable communicates the current buffer
-from `coq-compile-save-some-buffers' to
-`coq-compile-save-buffer-filter'.")
-
-(defun coq-compile-save-buffer-filter ()
-  "Filter predicate for `coq-compile-save-some-buffers'.
-See also `save-some-buffers'. Returns t for buffers with major mode
-'coq-mode' different from coq-process-require-current-buffer and nil
-for all other buffers. The buffer to test must be current."
-  (and
-   (eq major-mode 'coq-mode)
-   (not (eq coq-process-require-current-buffer
-            (current-buffer)))))
-  
-(defun coq-compile-save-some-buffers ()
-  "Save buffers according to `coq-compile-auto-save'.
-Uses the local variable coq-process-require-current-buffer to pass the
-current buffer (which contains the Require command) to
-`coq-compile-save-buffer-filter'."
-  (let ((coq-process-require-current-buffer (current-buffer))
-        unconditionally buffer-filter)
-    (cond
-     ((eq coq-compile-auto-save 'ask-coq)
-      (setq unconditionally nil
-            buffer-filter 'coq-compile-save-buffer-filter))
-     ((eq coq-compile-auto-save 'ask-all)
-      (setq unconditionally nil
-            buffer-filter nil))
-     ((eq coq-compile-auto-save 'save-coq)
-      (setq unconditionally t
-            buffer-filter 'coq-compile-save-buffer-filter))
-     ((eq coq-compile-auto-save 'save-all)
-      (setq unconditionally t
-            buffer-filter nil)))
-    (save-some-buffers unconditionally buffer-filter)))
-
-(defun coq-preprocess-require-commands ()
-  "Coq function for `proof-shell-extend-queue-hook'.
-If `coq-compile-before-require' is non-nil, this function performs the
-compilation (if necessary) of the dependencies."
-  (if coq-compile-before-require
-      (let (;; coq-object-hash-symbol serves as a pointer to the
-            ;; coq-obj-hash (see coq-make-lib-up-to-date). The hash
-            ;; will be initialized when needed and stored in the value
-            ;; cell of coq-object-hash-symbol. The symbol is initialized
-            ;; here to use one hash for all the requires that are added now.
-            (coq-object-hash-symbol nil)
-            string)
-        (dolist (item queueitems)
-          (let ((string (mapconcat 'identity (nth 1 item) " ")))
-            (when (and string
-                       (string-match coq-require-command-regexp string))
-              (let ((span (car item))
-                    (start (match-end 0)))
-                (span-add-delete-action
-                 span
-                 `(lambda ()
-                    (coq-unlock-all-ancestors-of-span ,span)))
-                (coq-compile-save-some-buffers)
-                ;; now process all required modules
-                (while (string-match coq-require-id-regexp string start)
-                  (setq start (match-end 0))
-                  (coq-check-module 'coq-object-hash-symbol span
-                                    (match-string 1 string))))))))))
-
-(add-hook 'proof-shell-extend-queue-hook 'coq-preprocess-require-commands)
-
-;; kill coqtop on script buffer change
-
-(defun coq-switch-buffer-kill-proof-shell ()
-  "Kill the proof shell without asking the user.
-This function is for `proof-deactivate-scripting-hook'. It kills
-the proof shell without asking the user for
-confirmation (assuming she agreed already on switching the active
-scripting buffer). This is needed to ensure the load path is
-correct in the new scripting buffer."
-  (unless proof-shell-exit-in-progress
-    (proof-shell-exit t)))
-
-
-(add-hook 'proof-deactivate-scripting-hook
-          'coq-switch-buffer-kill-proof-shell
-          t)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -2216,6 +1780,19 @@ The not yet delayed output is in the region
         (span-start span)
       nil)))
     
+(defun coq-proof-tree-find-undo-position (state)
+  "Return the position for undo state STATE.
+This is the Coq incarnation of `proof-tree-find-undo-position'."
+  (let ((span-res nil)
+        (span-cur (span-at (1- (proof-unprocessed-begin)) 'type))
+        (state (1- state)))
+    ;; go backward as long as the statenum property in the span is greater or
+    ;; equal than state
+    (while (<= state (span-property span-cur 'statenum))
+      (setq span-res span-cur)
+      (setq span-cur (span-at (1- (span-start span-cur)) 'type)))
+    (span-start span-res)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -2341,6 +1918,7 @@ mouse activation."
           (unless (zerop (length s)) (insert (format "%s %s.\n" reqkind s)))
           while (not (string-equal s "")))))
 
+;; TODO add module closing
 (defun coq-end-Section ()
   "Ends a Coq section."
   (interactive)
@@ -2453,6 +2031,7 @@ Typically after a proof-assert-next-command.
         (save-excursion
           ;; TODO: look for eqn:XX and go before it.
           ;; Go just before the last "."
+          (goto-char (proof-unprocessed-begin))
           (coq-script-parse-cmdend-backward)
           (let ((inhibit-read-only t))
             (insert (concat " as [" substr "]")))))))
@@ -2466,14 +2045,13 @@ Typically after a proof-assert-next-command.
 ;; proof-assert-next-command-interactive is probably wrong if some error occur
 ;; during scripting.
 (defun coq-insert-as-in-region (&optional beg end)
+  (interactive "r")
   (let ((beg (or beg (point-min)))
         (end (or end (point-max))))
     (goto-char beg)
     (while (< (point) end)
       (coq-script-parse-cmdend-forward)
-      (proof-assert-next-command-interactive)
-      )
-    ))
+      (proof-assert-next-command-interactive))))
 
 
 
@@ -2534,6 +2112,17 @@ Completion is on a quasi-exhaustive list of Coq tacticals."
   (interactive)
   (coq-insert-from-db coq-terms-db "Kind of term"))
 
+
+(defun coq-query (showall)
+  "Ask for a query, with completion, and send to Coq."
+  (interactive "P")
+  (let ((q (coq-build-command-from-db coq-queries-commands-db "which Query?")))
+    (if showall
+        (coq-command-with-set-unset
+         "Set Printing All" q "Unset Printing All" nil "Test Printing All")
+      (proof-shell-invisible-command q))))
+
+
 ;; Insertion commands
 (define-key coq-keymap [(control ?i)] 'coq-insert-intros)
 (define-key coq-keymap [(control ?m)] 'coq-insert-match)
@@ -2544,6 +2133,7 @@ Completion is on a quasi-exhaustive list of Coq tacticals."
 (define-key coq-keymap [?!] 'coq-insert-solve-tactic) ; will work in tty
 (define-key coq-keymap [(control ?\s)] 'coq-insert-term)
 (define-key coq-keymap [(control return)] 'coq-insert-command)
+(define-key coq-keymap [(control ?q)] 'coq-query)
 (define-key coq-keymap [(control ?r)] 'coq-insert-requires)
 
 ; Query commands
@@ -2554,6 +2144,7 @@ Completion is on a quasi-exhaustive list of Coq tacticals."
 (define-key coq-keymap [(control ?p)] 'coq-Print)
 (define-key coq-keymap [(control ?b)] 'coq-About)
 (define-key coq-keymap [(control ?a)] 'coq-SearchAbout)
+(define-key coq-keymap [(control shift ?a)] 'coq-SearchAbout-all)
 (define-key coq-keymap [(control ?c)] 'coq-Check)
 (define-key coq-keymap [?h] 'coq-PrintHint)
 (define-key coq-keymap [(control ?l)] 'coq-LocateConstant)
@@ -2570,10 +2161,12 @@ Completion is on a quasi-exhaustive list of Coq tacticals."
 (define-key coq-goals-mode-map [(control ?c)(control ?a)(control ?o)] 'coq-SearchIsos)
 (define-key coq-goals-mode-map [(control ?c)(control ?a)(control ?b)] 'coq-About)
 (define-key coq-goals-mode-map [(control ?c)(control ?a)(control ?a)] 'coq-SearchAbout)
+(define-key coq-goals-mode-map [(control ?c)(control ?a)(control shift ?a)] 'coq-SearchAbout-all)
 (define-key coq-goals-mode-map [(control ?c)(control ?a)(control ?s)] 'coq-Show)
 (define-key coq-goals-mode-map [(control ?c)(control ?a)?r] 'proof-store-response-win)
 (define-key coq-goals-mode-map [(control ?c)(control ?a)?g] 'proof-store-goals-win)
 (define-key coq-goals-mode-map [(control ?c)(control ?a)?h] 'coq-PrintHint)
+(define-key coq-goals-mode-map [(control ?c)(control ?a)(control ?q)] 'coq-query)
 
 
 (define-key coq-response-mode-map [(control ?c)(control ?a)(control ?c)] 'coq-Check)
@@ -2585,6 +2178,29 @@ Completion is on a quasi-exhaustive list of Coq tacticals."
 (define-key coq-response-mode-map [(control ?c)(control ?a)(control ?r)] 'proof-store-response-win)
 (define-key coq-response-mode-map [(control ?c)(control ?a)(control ?g)] 'proof-store-goals-win)
 (define-key coq-response-mode-map [(control ?c)(control ?a)?h] 'coq-PrintHint)
+(define-key coq-response-mode-map [(control ?c)(control ?a)(control ?q)] 'coq-query)
+
+(when coq-remap-mouse-1
+  (define-key proof-mode-map [(control down-mouse-1)] 'coq-id-under-mouse-query)
+  (define-key proof-mode-map [(shift down-mouse-1)] 'coq-id-under-mouse-query)
+  (define-key proof-mode-map [(control mouse-1)] '(lambda () (interactive)))
+  (define-key proof-mode-map [(shift mouse-1)] '(lambda () (interactive)))
+  (define-key proof-mode-map [(control shift down-mouse-1)] 'coq-id-under-mouse-query)
+  (define-key proof-mode-map [(control shift mouse-1)] '(lambda () (interactive)))
+
+  (define-key proof-response-mode-map [(control down-mouse-1)] 'coq-id-under-mouse-query)
+  (define-key proof-response-mode-map [(shift down-mouse-1)] 'coq-id-under-mouse-query)
+  (define-key proof-response-mode-map [(control mouse-1)] '(lambda () (interactive)))
+  (define-key proof-response-mode-map [(shift mouse-1)] '(lambda () (interactive)))
+  (define-key proof-response-mode-map [(control shift down-mouse-1)] 'coq-id-under-mouse-query)
+  (define-key proof-response-mode-map [(control shift mouse-1)] '(lambda () (interactive)))
+
+  (define-key proof-goals-mode-map [(control down-mouse-1)] 'coq-id-under-mouse-query)
+  (define-key proof-goals-mode-map [(shift down-mouse-1)] 'coq-id-under-mouse-query)
+  (define-key proof-goals-mode-map [(control mouse-1)] '(lambda () (interactive)))
+  (define-key proof-goals-mode-map [(shift mouse-1)] '(lambda () (interactive)))
+  (define-key proof-goals-mode-map [(control shift down-mouse-1)] 'coq-id-under-mouse-query)
+  (define-key proof-goals-mode-map [(control shift mouse-1)] '(lambda () (interactive))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ;; error handling
@@ -2619,16 +2235,17 @@ If PARSERESP and CLEAN are non-nil, delete the error location from the response
 buffer."
   (if (not parseresp) last-coq-error-location
     ;; proof-shell-handle-error-or-interrupt-hook is called from shell buffer
+    ;; then highlight the corresponding error location
     (proof-with-current-buffer-if-exists proof-response-buffer
-      (goto-char (point-max))
-      (when (re-search-backward "\n> \\(.*\\)\n> \\([^^]*\\)\\(\\^+\\)\n" nil t)
+      (goto-char (point-max)) ;\nToplevel input, character[^:]:\n
+      (when (re-search-backward "^Toplevel input[^:]+:\n> \\(.*\\)\n> \\([^^]*\\)\\(\\^+\\)\n" nil t)
         (let ((text (match-string 1))
               (pos (length (match-string 2)))
               (len (length (match-string 3))))
           ;; clean the response buffer from ultra-ugly underlined command line
           ;; parsed above. Don't kill the first \n
           (let ((inhibit-read-only t))
-            (when clean (delete-region (+ (match-beginning 0) 1) (match-end 0))))
+            (when clean (delete-region (match-beginning 0) (match-end 0))))
           (when proof-shell-unicode ;; TODO: remove this (when...) when coq-8.3 is out.
             ;; `pos' and `len' are actually specified in bytes, apparently. So
             ;; let's convert them, assuming the encoding used is utf-8.
@@ -2793,13 +2410,13 @@ Only when three-buffer-mode is enabled."
     (let (;; maxhgth is the max height of both resp and goals buffers to avoid
           ;; make the other disappear
           (maxhgth (with-selected-window (get-buffer-window proof-script-buffer)
-                       (- (window-height) window-min-height)))
+                       (- (window-text-height) window-min-height)))
           hgt-resp nline-resp)
       (with-selected-window (get-buffer-window proof-response-buffer)
-        (setq hgt-resp (window-height))
+        (setq hgt-resp (window-text-height))
         (with-current-buffer proof-response-buffer
           (setq nline-resp ; number of lines we want for response buffer
-                (min maxhgth (max window-min-height ; + 1 here for comfort
+                (min maxhgth (max window-min-height ; + 1 for comfort
                                   (+ 1 (count-lines (point-max) (point-min)))))))
         (unless (is-not-split-vertic (selected-window))
           (shrink-window (- hgt-resp nline-resp)))
@@ -2819,9 +2436,14 @@ Only when three-buffer-mode is enabled."
 ;; Adapt when displaying an error or interrupt
 (add-hook 'proof-shell-handle-error-or-interrupt-hook 'coq-optimise-resp-windows)
 
+;;; DOUBLE HIT ELECTRIC TERMINATOR
+;; Trying to have double hit on colon behave like electric terminator. The "."
+;; is used for records and modules qualified notatiohns, so electric terminator
+;; is not pertinent.
 
-;; Trying to have double hit on colon behave like electric terminator.
-; TODO Have the same for other commands, but with insertion at all.
+;; TODO: make this a minor mode with something in the modeline, like in
+;; pg-user.el for electric-terminator.
+;; TODO: Have the same for other commands, but with insertion at all.
 
 (defcustom coq-double-hit-enable nil
   "* Experimental: Whether or not double hit should be enabled in coq mode.
@@ -2834,11 +2456,39 @@ the usual electric terminator. See `proof-electric-terminator'.
   :set 'proof-set-value
   :group 'proof-user-options)
 
- (defun coq-double-hit-enable ()
-   "Disables electric terminator since double hit is a replacement.
+
+(defvar coq-double-hit-hot-key "."
+  "The key used for double hit electric terminator. By default this
+is the coq terminator \".\" key. For example one can do this:
+
+(setq coq-double-hit-hot-key (kbd \";\"))
+
+to use semi-colon instead (on french keyboard, it is the same key
+as \".\" but without shift.")
+
+(defvar coq-double-hit-hot-keybinding nil
+  "The keybinding that was erased by double hit terminator enabling.
+It will be restored if double hit terminator is toggle off.")
+
+;; We redefine the keybinding when we go in and out of double hit mode, even if
+;; in principle coq-terminator-insert is compatible with
+;; proof-electric-terminator. This may be overprudent but I suspect that  
+(defun coq-double-hit-enable ()
+  "Disables electric terminator since double hit is a replacement.
 This function is called by `proof-set-value' on `coq-double-hit-enable'."
-   (when (and coq-double-hit-enable proof-electric-terminator-enable)
-     (proof-electric-terminator-toggle 0)))
+  (when (and coq-double-hit-enable proof-electric-terminator-enable)
+    (proof-electric-terminator-toggle 0))
+  ;; this part switch between bindings of coq-double-hit-hot-key: the nominal
+  ;; one and coq-terminator-insert
+;  (if (not coq-double-hit-enable)
+;      (define-key coq-mode-map (kbd coq-double-hit-hot-key) coq-double-hit-hot-keybinding)
+;    (setq coq-double-hit-hot-keybinding (key-binding coq-double-hit-hot-key))
+;    (define-key coq-mode-map (kbd coq-double-hit-hot-key) 'coq-terminator-insert))
+  )
+
+
+
+;;(define-key coq-mode-map coq-double-hit-hot-key 'coq-terminator-insert)
 
 (proof-deftoggle coq-double-hit-enable coq-double-hit-toggle)
 
@@ -2846,7 +2496,8 @@ This function is called by `proof-set-value' on `coq-double-hit-enable'."
   "Disable double hit terminator since electric terminator is a replacement.
 This is an advice to pg `proof-electric-terminator-enable' function."
   (when (and coq-double-hit-enable proof-electric-terminator-enable)
-    (coq-double-hit-toggle 0)))
+    (coq-double-hit-toggle 0)
+    (message "Hit M-1 . to enter a real \".\".")))
 
 (ad-activate 'proof-electric-terminator-enable)
 
@@ -2858,6 +2509,7 @@ This is an advice to pg `proof-electric-terminator-enable' function."
 
 (defvar coq-double-hit-hot nil
   "The variable telling that a double hit is still possible.")
+
 
 
 (defun coq-unset-double-hit-hot ()
@@ -2872,7 +2524,9 @@ be called at double hit timeout."
   "Detect a double hit and act as electric terminator if detected.
 Starts a timer for a double hit otherwise."
   (interactive)
-  (if coq-double-hit-hot
+  (if (and coq-double-hit-hot
+           (not (proof-inside-comment (point)))
+           (not (proof-inside-string (point))))
       (progn (coq-unset-double-hit-hot)
              (delete-char -1) ; remove previously typed char
              (proof-assert-electric-terminator)); insert the terminator
@@ -2887,15 +2541,34 @@ Starts a timer for a double hit otherwise."
 If by accident `proof-electric-terminator-enable' and `coq-double-hit-enable'
 are non-nil at the same time, this gives priority to the former."
   (interactive)
-  (if proof-electric-terminator-enable (proof-electric-terminator count)
-    (if (and coq-double-hit-enable (null count))
-        (coq-colon-self-insert)
-      (self-insert-command (or count 1)))))
+  (if (and (not proof-electric-terminator-enable)
+           coq-double-hit-enable (null count))
+      (coq-colon-self-insert)
+    ;; otherwise call this, which checks proof-electric-terminator-enable
+    (proof-electric-terminator count)))
 
-;; Setting the new mapping for terminator
-;(define-key coq-mode-map (kbd ".") 'coq-terminator-insert)
+;; Setting the new mapping for terminator, overrides the following in proof-script:
+;; (define-key proof-mode-map (vector (aref proof-terminal-string 0)) 'proof-electric-terminator)
+
+;(define-key proof-mode-map (kbd coq-double-hit-hot-key) 'coq-terminator-insert)
+(define-key coq-mode-map (kbd ".") 'coq-terminator-insert)
 ;(define-key coq-mode-map (kbd ";") 'coq-terminator-insert) ; for french keyboards
 
+;; Activation of ML4PG functionality
+(declare-function ml4pg-select-mode "ml4pg") ;; Avoids copilation warnings
+
+(defun coq-activate-ml4pg ()
+  (let ((filename (concatenate 'string proof-home-directory "contrib/ML4PG/ml4pg.el")))
+    (when (file-exists-p filename) (load-file filename) (ml4pg-select-mode))))
+
+;;;;;;;;;;;;;;
+
+;; This was done in coq-compile-common, but it is actually a good idea even
+;; when "compile when require" is off. When switching scripting buffer, let us
+;; restart the coq shell process, so that it applies local coqtop options. 
+(add-hook 'proof-deactivate-scripting-hook
+          'coq-switch-buffer-kill-proof-shell ;; this function is in coq-compile-common
+          t)
 
 (provide 'coq)
 

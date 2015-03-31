@@ -1,6 +1,6 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html401/loose.dtd">
 <html>
-<!-- Created on October 19, 2012 by texi2html 1.82
+<!-- Created on March 13, 2015 by texi2html 1.82
 texi2html was written by: 
             Lionel Cons <Lionel.Cons@cern.ch> (original author)
             Karl Berry  <karl@freefriends.org>
@@ -228,19 +228,55 @@ in <code>generic/proof-tree.el</code> as well as in the
 Prooftree program.
 </p>
 <table class="menu" border="0" cellspacing="0">
-<tr><td align="left" valign="top"><a href="#Prerequisites">12.1 Prerequisites</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
+<tr><td align="left" valign="top"><a href="#A-layered-set-of-proof-trees">12.1 A layered set of proof trees</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
 </td></tr>
-<tr><td align="left" valign="top"><a href="#Proof_002dTree-Display-Internals">12.2 Proof-Tree Display Internals</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
+<tr><td align="left" valign="top"><a href="#Prerequisites">12.2 Prerequisites</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
 </td></tr>
-<tr><td align="left" valign="top"><a href="#Configuring-Prooftree-for-a-New-Proof-Assistant">12.3 Configuring Prooftree for a New Proof Assistant</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
+<tr><td align="left" valign="top"><a href="#Proof_002dTree-Display-Internals">12.3 Proof-Tree Display Internals</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
+</td></tr>
+<tr><td align="left" valign="top"><a href="#Configuring-Prooftree-for-a-New-Proof-Assistant">12.4 Configuring Prooftree for a New Proof Assistant</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
 </td></tr>
 </table>
 
 
 <hr size="6">
+<a name="A-layered-set-of-proof-trees"></a>
+<a name="A-layered-set-of-proof-trees-1"></a>
+<h2 class="section">12.1 A layered set of proof trees</h2>
+
+<p>Prooftree can actually display more than one proof tree per
+proof. This is necessary to support the 
+<code>Grab Existential Variables</code> command in Coq. When the main
+goal has been proved, this command turns all open existential
+variables into new proof obligations. All these new proof
+obligations become root nodes for their own proof trees. When
+they all have been proved one can again grab the open existential
+variables...
+</p>
+<p>For each proof, Prooftree can therefore display several layers,
+where each layer can contain several (graphically) independent
+proof trees. The first layer contains one tree for the original
+proof goal. The second layer contains proof trees for goals that
+have been added to the proof after the first proof tree was
+completed. And so on.
+</p>
+<p>To organize the layers, Prooftree must identify those proof
+commands that add new goals to a proof.
+</p>
+<dl>
+<dt><a name="index-proof_002dtree_002dnew_002dlayer_002dcommand_002dregexp"></a><u>Variable:</u> <b>proof-tree-new-layer-command-regexp</b></dt>
+<dd><p>Regexp to match proof commands that add new goals to a proof.<br>
+This regexp must match the command that turns the proof assistant
+into prover mode, which adds the initial goal to the proof. It
+must further match commands that add additional goals after all
+previous goals have been proved.
+</p></dd></dl>
+
+
+<hr size="6">
 <a name="Prerequisites"></a>
 <a name="Prerequisites-1"></a>
-<h2 class="section">12.1 Prerequisites</h2>
+<h2 class="section">12.2 Prerequisites</h2>
 
 <p>Proof-tree visualization requires certain support from the proof
 assistant. Patching the proof assistant is therefore the first
@@ -309,7 +345,7 @@ evar line, that is printed with the <code>-emacs</code> switch.
 <hr size="6">
 <a name="Proof_002dTree-Display-Internals"></a>
 <a name="Proof_002dTree-Display-Internals-1"></a>
-<h2 class="section">12.2 Proof-Tree Display Internals</h2>
+<h2 class="section">12.3 Proof-Tree Display Internals</h2>
 
 <p>This section gives some information about the inner structure of
 the code that realizes the proof-tree display. The idea here is
@@ -318,15 +354,15 @@ documentation of the customizable variables of the proof-tree
 Elisp code easy to understand.
 </p>
 <table class="menu" border="0" cellspacing="0">
-<tr><td align="left" valign="top"><a href="#Organization-of-the-Code">12.2.1 Organization of the Code</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
+<tr><td align="left" valign="top"><a href="#Organization-of-the-Code">12.3.1 Organization of the Code</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
 </td></tr>
-<tr><td align="left" valign="top"><a href="#Communication">12.2.2 Communication</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
+<tr><td align="left" valign="top"><a href="#Communication">12.3.2 Communication</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
 </td></tr>
-<tr><td align="left" valign="top"><a href="#Guards">12.2.3 Guards</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
+<tr><td align="left" valign="top"><a href="#Guards">12.3.3 Guards</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
 </td></tr>
-<tr><td align="left" valign="top"><a href="#Urgent-and-Delayed-Actions">12.2.4 Urgent and Delayed Actions</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
+<tr><td align="left" valign="top"><a href="#Urgent-and-Delayed-Actions">12.3.4 Urgent and Delayed Actions</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
 </td></tr>
-<tr><td align="left" valign="top"><a href="#Full-Annotation">12.2.5 Full Annotation</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
+<tr><td align="left" valign="top"><a href="#Full-Annotation">12.3.5 Full Annotation</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
 </td></tr>
 </table>
 
@@ -334,7 +370,7 @@ Elisp code easy to understand.
 <hr size="6">
 <a name="Organization-of-the-Code"></a>
 <a name="Organization-of-the-Code-1"></a>
-<h3 class="subsection">12.2.1 Organization of the Code</h3>
+<h3 class="subsection">12.3.1 Organization of the Code</h3>
 
 <p>The proof-tree display is realized by Proof General in
 cooperation with the external Prooftree program. The
@@ -431,7 +467,7 @@ subdirectory.
 <hr size="6">
 <a name="Communication"></a>
 <a name="Communication-1"></a>
-<h3 class="subsection">12.2.2 Communication</h3>
+<h3 class="subsection">12.3.2 Communication</h3>
 
 <p>Prooftree is a standard Emacs subprocess that reads goals and
 other proof status messages from its standard input. The
@@ -439,10 +475,12 @@ communication between Proof General and Prooftree is almost one
 way only. Proof General sends proof status messages to Prooftree,
 from which Prooftree reconstructs the current proof status and
 the complete proof tree. Prooftree never requests additional
-information from Proof General. The only message that is sent
-from Prooftree to Proof General is a <code>stop-displaying</code>
-command, when the user closes the proof-tree display of the
-current proof.
+information from Proof General. 
+</p>
+<p>There are only a few messages that Prooftree sends to Proof
+General. These messages communicate user requests to Proof
+General, for instance, when the user selects the undo menu item,
+or when he closes the Prooftree window.
 </p>
 <p>The communication protocol is completely described in the
 <code>ocamldoc</code> documentation of <code>input.ml</code> in the Prooftree
@@ -452,13 +490,15 @@ is encoded in the message before the string itself.
 </p>
 <p>For debugging purposes Prooftree can save all input in a file.
 This feature can be turned on in the <code>Debug</code> tab of the
-Prooftree configuration dialog or with option <code>-tee</code>.
+Prooftree configuration dialog or with option <code>-tee</code>. The
+text that Prooftree sends to Proof General can be found in buffer
+<code>*proof-tree*</code>.
 </p>
 
 <hr size="6">
 <a name="Guards"></a>
 <a name="Guards-1"></a>
-<h3 class="subsection">12.2.3 Guards</h3>
+<h3 class="subsection">12.3.3 Guards</h3>
 
 <p>The proof-tree display code inside Proof General uses two guard
 variables. 
@@ -513,7 +553,7 @@ display is switched off.
 <hr size="6">
 <a name="Urgent-and-Delayed-Actions"></a>
 <a name="Urgent-and-Delayed-Actions-1"></a>
-<h3 class="subsection">12.2.4 Urgent and Delayed Actions</h3>
+<h3 class="subsection">12.3.4 Urgent and Delayed Actions</h3>
 
 <p>The proof-shell filter functions contains two calls to proof-tree
 specific code. One for urgent actions and one for all remaining
@@ -558,13 +598,19 @@ assistant is already busy with the next item from
 <code>proof-action-list</code>. 
 </p>
 <dl>
-<dt><a name="index-proof_002dtree_002dhandle_002ddelayed_002doutput"></a><u>Function:</u> <b>proof-tree-handle-delayed-output</b><i> cmd flags span</i></dt>
+<dt><a name="index-proof_002dtree_002dhandle_002ddelayed_002doutput"></a><u>Function:</u> <b>proof-tree-handle-delayed-output</b><i> old-proof-marker cmd flags span</i></dt>
 <dd><p>Process delayed output for prooftree.<br>
 This function is the main entry point of the Proof General
 prooftree support. It examines the delayed output in order to
 take appropriate actions and maintains the internal state.
 </p>
-<p>All arguments are (former) fields of the &lsquo;<samp><code>proof-action-list</code></samp>&rsquo;
+<p>The delayed output to handle is in the region
+[<code>proof-shell-delayed-output-start</code>, <code>proof-shell-delayed-output-end</code>].
+Urgent messages might be before that, following <var>old-proof-marker</var>,
+which contains the position of &lsquo;<samp><code>proof-marker</code></samp>&rsquo;, before the next
+command was sent to the proof assistant.
+</p>
+<p>All other arguments are (former) fields of the &lsquo;<samp><code>proof-action-list</code></samp>&rsquo;
 entry that is now finally retired. <var>cmd</var> is the command, <var>flags</var> are
 the flags and <var>span</var> is the span.
 </p></dd></dl>
@@ -576,7 +622,7 @@ communication with Prooftree.
 <hr size="6">
 <a name="Full-Annotation"></a>
 <a name="Full-Annotation-1"></a>
-<h3 class="subsection">12.2.5 Full Annotation</h3>
+<h3 class="subsection">12.3.5 Full Annotation</h3>
 
 <p>In the default configuration Proof General switches the proof
 assistant into quiet mode if there are more than
@@ -592,23 +638,23 @@ assistant noisy when the proof-tree display is switched on.
 <hr size="6">
 <a name="Configuring-Prooftree-for-a-New-Proof-Assistant"></a>
 <a name="Configuring-Prooftree-for-a-New-Proof-Assistant-1"></a>
-<h2 class="section">12.3 Configuring Prooftree for a New Proof Assistant</h2>
+<h2 class="section">12.4 Configuring Prooftree for a New Proof Assistant</h2>
 
 <p>To get the proof-tree display running for a new proof assistant
 one has to configure the proof-tree Elisp code and adapt the
 Prooftree program.
 </p>
 <table class="menu" border="0" cellspacing="0">
-<tr><td align="left" valign="top"><a href="#Proof-Tree-Elisp-configuration">12.3.1 Proof Tree Elisp configuration</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
+<tr><td align="left" valign="top"><a href="#Proof-Tree-Elisp-configuration">12.4.1 Proof Tree Elisp configuration</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
 </td></tr>
-<tr><td align="left" valign="top"><a href="#Prooftree-Adaption">12.3.2 Prooftree Adaption</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
+<tr><td align="left" valign="top"><a href="#Prooftree-Adaption">12.4.2 Prooftree Adaption</a></td><td>&nbsp;&nbsp;</td><td align="left" valign="top">
 </td></tr>
 </table>
 
 <hr size="6">
 <a name="Proof-Tree-Elisp-configuration"></a>
 <a name="Proof-Tree-Elisp-configuration-1"></a>
-<h3 class="subsection">12.3.1 Proof Tree Elisp configuration</h3>
+<h3 class="subsection">12.4.1 Proof Tree Elisp configuration</h3>
 
 <p>All variables that need to be configured are in the customization
 group <code>proof-tree-internals</code>. Most of these variables are
@@ -631,7 +677,7 @@ proof assistant proof-shell mode.
 <hr size="6">
 <a name="Prooftree-Adaption"></a>
 <a name="Prooftree-Adaption-1"></a>
-<h3 class="subsection">12.3.2 Prooftree Adaption</h3>
+<h3 class="subsection">12.4.2 Prooftree Adaption</h3>
 
 <p>To make the new proof assistant known to Prooftree, the match in
 function <code>configure_prooftree</code> in <code>input.ml</code> must be
@@ -665,7 +711,7 @@ reference <code>parse_existential_info</code>.
 </tr></table>
 <p>
  <font size="-1">
-  This document was generated by <em>David Aspinall</em> on <em>October 19, 2012</em> using <a href="http://www.nongnu.org/texi2html/"><em>texi2html 1.82</em></a>.
+  This document was generated by <em>David Aspinall</em> on <em>March 13, 2015</em> using <a href="http://www.nongnu.org/texi2html/"><em>texi2html 1.82</em></a>.
  </font>
  <br>
 

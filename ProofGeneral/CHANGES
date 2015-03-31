@@ -4,6 +4,152 @@ This is a summary of main changes.  For details, please see
 the CVS ChangeLog and PG Trac, http://proofgeneral.inf.ed.ac.uk/trac.
 
 
+* Changes of Proof General 4.3 from Proof General 4.2
+
+** Prooftree changes
+
+*** Require Prooftree version 0.11
+    Check the Prooftree website to see which other versions of
+    Prooftree are compatible with Proof General 4.3.
+
+*** New features
+    One can now trigger an retraction (undo) by selecting the
+    appropriate sequent in Prooftree. One can further send proof
+    commands or proof scripts from whole proof subtrees to Proof
+    General, which will insert them in the current buffer.
+    Prooftree also supports some recent Coq features, see below.
+
+** Coq changes
+
+*** Asynchronous parallel compilation of required modules
+    Proof General has now a second implementation for compiling
+    required Coq modules. 
+    Check menu Coq -> Settings -> Compile Parallel In Background
+    to compile modules in parallel in the background while Proof
+    General stays responsive.
+
+*** Support for more bullets (coq 8.5): -- --- ++ +++ ** ***
+    Scripting supports bullets of any length. 
+    Indentation supports only bullets of length <= 4 (like ----). Longer
+    may be supported if needed.
+    For indentation to work well, please use this precedence:
+    - + * -- ++ ** --- +++ *** ...
+
+*** smie indentation is now the only choice.
+    Old code removed. will work only if emacs >= 23.3.
+
+*** indentation of modules, sections and proofs are customizable
+
+    (setq coq-indent-modulestart X) will set indentation width for
+    modules and sections to X characters
+
+    (setq coq-indent-proofstart X) will set indentation width for
+    modules and sections to X characters
+
+*** indentation of match with cases:
+    by default the indentation is like this now:
+    match n with
+      O => ...
+    | S n => ...
+    end
+    do this: (setq coq-match-indent 4) to get back the
+    previous indetation style:
+    match n with
+        O => ...
+      | S n => ...
+    end    
+
+*** indentation now supports { at end of line:
+    example:
+
+    assert (h:n = k). {
+      apply foo.
+      reflexivity. }
+    apply h.
+
+*** Default indentation of forall and exists is not boxed anymore
+    For instance, this is now indented like this:
+
+       Lemma foo: forall x y,
+           x = 0 -> ... .
+    instead of:
+       Lemma foo: forall x y,
+                    x = 0 -> ... .
+    do this: (setq coq-indent-box-style t) to bring the box style back.
+
+*** Default indentation cases of "match with" are now indented by 2 instead of 4.
+     "|" is indented by zero:
+
+        match n with                   
+          0 => ...	     
+        | S n => ...                   
+        end                            
+     instead of: 
+        match n with  
+            0 => ...       
+          | S n => ...
+        end
+     do this: (setq coq-match-indent 4) to bring old behaviour back.
+
+*** Support for bullets, braces and Grab Existential Variables for Prooftree.
+
+*** Support for _Coqproject files
+
+    According to Coq documentation, it is advised to use coq_makefile
+    -f _CoqProject -o Makefile to build your Makefile automatically
+    from "profect file" _CoqProject. Such a file should contain the
+    options to pass to coq_makefile, i.e. paths to add to coq load
+    path (-I, -R) and other options to pass to coqc/coqtop (-arg).
+
+    Coqide (and now proofgeneral) do use the information stored in
+    this file to configure the options to add to the coqtop
+    invocation. When opening a coq file, proofgeneral looks for a file
+    _Coqproject in the current directory or a parent directory and
+    reads it. Except for very unlikely situation this should replace
+    the use of local file variables (which remains possible and
+    overrides project file options).
+
+*** Support for prettify-symbols-mode.
+
+*** Colors in response and goals buffers
+
+    Experimental: colorize hypothesis names and some parts of error
+    and warning messages. For readability.
+
+*** Coq Querying facilities
+
+**** Minibuffer interactive queries
+
+    Menu Coq/Other Queries (C-c C-a C-q) allows to send queries (like
+    Print, Locate...) (à la auctex) without inserting them in the
+    buffer. Queries are TAB completed and the usual history mechanism
+    applies. Completion allows only a set of state preserving
+    commands. The list is not exhaustive yet.
+
+    This should replace the C-c C-v usual command mechanism (which has
+    no completion).
+
+**** Mouse Queries
+
+    This remaps standard emacs key bindings (faces and buffers menus
+    popup), so this is not enabled by default, use (setq
+    coq-remap-mouse-1 t) to enable.
+
+    - (control mouse-1) on an identifier sends a Print query on that id.
+    - (shift mouse-1) on an identifier sends a About query on that id.
+    - (control shift mouse-1) on an identifier sends a Check query on
+      that id.
+
+    As most of the bindings, they are active in the three buffer
+    (script, goals, response). Obeys C-u prefix for "Printing all"
+    flag.
+
+*** bug fixes
+    - Annoying cursor jump when hitting ".".
+    - random missing output due to the prover left in silent mode by
+      a previously scripted error.
+    - Better display of warnings (less messages lost).
+
 * Changes of Proof General 4.2 from Proof General 4.1
 
 ** Generic/misc changes

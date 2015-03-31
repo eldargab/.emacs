@@ -1,10 +1,13 @@
-;; Exp 2011/10/13 10:54:51 12.0
+;; Exp 2015/03/05 09:47:06 12.1
 
 (require 'proof)			; load generic parts
 
 
 ;; Adjust toolbar entries.  (Must be done before proof-toolbar is
 ;; loaded).
+
+(eval-when-compile
+  (defvar phox-toolbar-entries nil))
 
 (eval-after-load "pg-custom"
   '(setq phox-toolbar-entries

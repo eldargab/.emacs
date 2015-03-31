@@ -1,18 +1,18 @@
 (*
     Example proof script for Coq Proof General.
 
-    example.v,v 11.0 2010/10/10 22:56:58 da Exp
+    example.v,v 11.1 2013/05/14 19:28:22 tews Exp
 *)
 
 Module Example.
 
-Goal forall (A B:Prop),(A /\ B) -> (B /\ A). 
-  intros A B.
-  intros H.
-  elim H.
-  split.
-  assumption.
-  assumption.
-Save and_comms.
+  Lemma and_commutative : forall (A B:Prop),(A /\ B) -> (B /\ A).
+  Proof.
+    intros A B H.
+    destruct H.
+    split.
+      trivial.
+    trivial.
+  Qed.
 
 End Example.

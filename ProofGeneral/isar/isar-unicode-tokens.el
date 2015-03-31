@@ -18,6 +18,8 @@
   (require 'unicode-tokens)	    ; it's loaded dynamically at runtime
   (require 'proof-unicode-tokens))  ; that file loads us at runtime
 
+(declare-function isar-markup-ml "isar")
+
 ;;
 ;; Customization
 ;;
@@ -353,7 +355,10 @@
     ("hungarumlaut" "ʺ")
     ("spacespace" " ")  ;; #x002001
     ("module" "⟨module⟩" bold)
-    ("some" "ϵ"))
+    ("some" "ϵ")
+    ("open" "‹")
+    ("close" "›")
+    ("newline" "⏎"))
   "Symbol token map for Isabelle.  The standard set of Isabelle symbols."
   :type 'unicode-tokens-token-symbol-map
   :group 'isabelle-tokens

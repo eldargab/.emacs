@@ -1,6 +1,6 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html401/loose.dtd">
 <html>
-<!-- Created on October 19, 2012 by texi2html 1.82
+<!-- Created on March 13, 2015 by texi2html 1.82
 texi2html was written by: 
             Lionel Cons <Lionel.Cons@cern.ch> (original author)
             Karl Berry  <karl@freefriends.org>
@@ -330,6 +330,7 @@ td.head4{
 <tr><td></td><td valign="top"><a href="PG-adapting_4.html#index-proof_002dscript_002dimenu_002dgeneric_002dexpression"><code>proof-script-imenu-generic-expression</code></a></td><td valign="top"><a href="PG-adapting_4.html#Recognizing-other-elements">3.3 Recognizing other elements</a></td></tr>
 <tr><td></td><td valign="top"><a href="PG-adapting_4.html#index-proof_002dscript_002dsexp_002dcommands"><code>proof-script-sexp-commands</code></a></td><td valign="top"><a href="PG-adapting_4.html#Recognizing-commands-and-comments">3.1 Recognizing commands and comments</a></td></tr>
 <tr><td></td><td valign="top"><a href="PG-adapting_10.html#index-proof_002dscript_002dsyntax_002dtable_002dentries"><code>proof-script-syntax-table-entries</code></a></td><td valign="top"><a href="PG-adapting_10.html#Configuring-Editing-Syntax">9. Configuring Editing Syntax</a></td></tr>
+<tr><td></td><td valign="top"><a href="PG-adapting_15.html#index-proof_002dsecond_002daction_002dlist_002dactive"><code>proof-second-action-list-active</code></a></td><td valign="top"><a href="PG-adapting_15.html#Proof-shell-mode">14.6 Proof shell mode</a></td></tr>
 <tr><td></td><td valign="top"><a href="PG-adapting_5.html#index-proof_002dshell_002dannotated_002dprompt_002dregexp"><code>proof-shell-annotated-prompt-regexp</code></a></td><td valign="top"><a href="PG-adapting_5.html#Settings-for-matching-various-output-from-proof-process">4.3 Settings for matching various output from proof process</a></td></tr>
 <tr><td></td><td valign="top"><a href="PG-adapting_5.html#index-proof_002dshell_002dassumption_002dregexp"><code>proof-shell-assumption-regexp</code></a></td><td valign="top"><a href="PG-adapting_5.html#Settings-for-matching-various-output-from-proof-process">4.3 Settings for matching various output from proof process</a></td></tr>
 <tr><td></td><td valign="top"><a href="PG-adapting_5.html#index-proof_002dshell_002dauto_002dterminate_002dcommands"><code>proof-shell-auto-terminate-commands</code></a></td><td valign="top"><a href="PG-adapting_5.html#Proof-shell-commands">4.1 Commands</a></td></tr>
@@ -398,11 +399,12 @@ td.head4{
 <tr><td></td><td valign="top"><a href="PG-adapting_12.html#index-proof_002dtokens_002ddeactivate_002dcommand"><code>proof-tokens-deactivate-command</code></a></td><td valign="top"><a href="PG-adapting_12.html#Configuring-Tokens">11. Configuring Tokens</a></td></tr>
 <tr><td></td><td valign="top"><a href="PG-adapting_12.html#index-proof_002dtokens_002dextra_002dmodes"><code>proof-tokens-extra-modes</code></a></td><td valign="top"><a href="PG-adapting_12.html#Configuring-Tokens">11. Configuring Tokens</a></td></tr>
 <tr><td></td><td valign="top"><a href="PG-adapting_3.html#index-proof_002dtoolbar_002dentries_002ddefault"><code>proof-toolbar-entries-default</code></a></td><td valign="top"><a href="PG-adapting_3.html#Toolbar-configuration">2.3 Toolbar configuration</a></td></tr>
-<tr><td></td><td valign="top"><a href="PG-adapting_13.html#index-proof_002dtree_002dconfigured"><code>proof-tree-configured</code></a></td><td valign="top"><a href="PG-adapting_13.html#Guards">12.2.3 Guards</a></td></tr>
-<tr><td></td><td valign="top"><a href="PG-adapting_13.html#index-proof_002dtree_002dexistentials_002dalist"><code>proof-tree-existentials-alist</code></a></td><td valign="top"><a href="PG-adapting_13.html#Organization-of-the-Code">12.2.1 Organization of the Code</a></td></tr>
-<tr><td></td><td valign="top"><a href="PG-adapting_13.html#index-proof_002dtree_002dexistentials_002dalist_002dhistory"><code>proof-tree-existentials-alist-history</code></a></td><td valign="top"><a href="PG-adapting_13.html#Organization-of-the-Code">12.2.1 Organization of the Code</a></td></tr>
-<tr><td></td><td valign="top"><a href="PG-adapting_13.html#index-proof_002dtree_002dexternal_002ddisplay"><code>proof-tree-external-display</code></a></td><td valign="top"><a href="PG-adapting_13.html#Guards">12.2.3 Guards</a></td></tr>
-<tr><td></td><td valign="top"><a href="PG-adapting_13.html#index-proof_002dtree_002dsequent_002dhash"><code>proof-tree-sequent-hash</code></a></td><td valign="top"><a href="PG-adapting_13.html#Organization-of-the-Code">12.2.1 Organization of the Code</a></td></tr>
+<tr><td></td><td valign="top"><a href="PG-adapting_13.html#index-proof_002dtree_002dconfigured"><code>proof-tree-configured</code></a></td><td valign="top"><a href="PG-adapting_13.html#Guards">12.3.3 Guards</a></td></tr>
+<tr><td></td><td valign="top"><a href="PG-adapting_13.html#index-proof_002dtree_002dexistentials_002dalist"><code>proof-tree-existentials-alist</code></a></td><td valign="top"><a href="PG-adapting_13.html#Organization-of-the-Code">12.3.1 Organization of the Code</a></td></tr>
+<tr><td></td><td valign="top"><a href="PG-adapting_13.html#index-proof_002dtree_002dexistentials_002dalist_002dhistory"><code>proof-tree-existentials-alist-history</code></a></td><td valign="top"><a href="PG-adapting_13.html#Organization-of-the-Code">12.3.1 Organization of the Code</a></td></tr>
+<tr><td></td><td valign="top"><a href="PG-adapting_13.html#index-proof_002dtree_002dexternal_002ddisplay"><code>proof-tree-external-display</code></a></td><td valign="top"><a href="PG-adapting_13.html#Guards">12.3.3 Guards</a></td></tr>
+<tr><td></td><td valign="top"><a href="PG-adapting_13.html#index-proof_002dtree_002dnew_002dlayer_002dcommand_002dregexp"><code>proof-tree-new-layer-command-regexp</code></a></td><td valign="top"><a href="PG-adapting_13.html#A-layered-set-of-proof-trees">12.1 A layered set of proof trees</a></td></tr>
+<tr><td></td><td valign="top"><a href="PG-adapting_13.html#index-proof_002dtree_002dsequent_002dhash"><code>proof-tree-sequent-hash</code></a></td><td valign="top"><a href="PG-adapting_13.html#Organization-of-the-Code">12.3.1 Organization of the Code</a></td></tr>
 <tr><td></td><td valign="top"><a href="PG-adapting_4.html#index-proof_002dundo_002dn_002dtimes_002dcmd"><code>proof-undo-n-times-cmd</code></a></td><td valign="top"><a href="PG-adapting_4.html#Configuring-undo-behaviour">3.4 Configuring undo behaviour</a></td></tr>
 <tr><td></td><td valign="top"><a href="PG-adapting_8.html#index-proof_002duniversal_002dkeys"><code>proof-universal-keys</code></a></td><td valign="top"><a href="PG-adapting_8.html#Global-Constants">7. Global Constants</a></td></tr>
 <tr><td colspan="3"> <hr></td></tr>
@@ -434,7 +436,7 @@ td.head4{
 </tr></table>
 <p>
  <font size="-1">
-  This document was generated by <em>David Aspinall</em> on <em>October 19, 2012</em> using <a href="http://www.nongnu.org/texi2html/"><em>texi2html 1.82</em></a>.
+  This document was generated by <em>David Aspinall</em> on <em>March 13, 2015</em> using <a href="http://www.nongnu.org/texi2html/"><em>texi2html 1.82</em></a>.
  </font>
  <br>
 
