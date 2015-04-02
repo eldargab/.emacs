@@ -135,6 +135,7 @@
 (setq k-docs (kbd "<f4>"))
 (setq k-jump-to-definition (kbd "<double-mouse-1>"))
 (setq k-jump-back (kbd "<s-double-mouse-1>>"))
+(setq k-apropos (kbd "<s-f1>"))
 
 (defmacro case-sel (no-sel sel)
   `(lambda ()
@@ -171,6 +172,7 @@
 
 (add-hook 'coq-mode-hook
           '(lambda ()
+             (set (make-local-variable 'electric-indent-chars) '(?\n ?| ?.))
              (define-key coq-mode-map k-eval 'move-proof-to-point)
              (define-key coq-mode-map (kbd "<M-s-return>") 'proof-undo-last-successful-command)
              (define-key coq-mode-map k-compile 'coq-Compile)
@@ -181,7 +183,8 @@
              (define-key coq-mode-map k-docs '(lambda ()
                                                 (interactive)
                                                 (execute-kbd-macro
-                                                 (kbd "M-x coq-Check RET RET"))))))
+                                                 (kbd "M-x coq-Check RET RET"))))
+             (define-key coq-mode-map k-apropos 'coq-SearchAbout)))
 
 (setq proof-follow-mode 'followdown)
 (setq proof-splash-enable nil)
@@ -211,7 +214,7 @@
           '(lambda ()
              (define-key idris-mode-map k-compile 'idris-load-file)
              (define-key idris-mode-map k-docs 'idris-docs-at-point)
-             (define-key idris-mode-map (kbd "<s-f1>") 'idris-apropos)
+             (define-key idris-mode-map k-apropos 'idris-apropos)
              ))
 
 (custom-set-variables
