@@ -69,6 +69,7 @@
 
 ;; customize scrolling
 (setq mouse-wheel-scroll-amount '(1 ((shift) . 1))
+      ;; mouse-wheel-progressive-speed 5
       scroll-step 1)
 
 (setq inferior-lisp-program "/usr/local/bin/ccl")
@@ -123,6 +124,21 @@
 
 (global-set-key (kbd "s-/") 'my-toggle-comment)
 
+;; indentation
+(defun my-indent ()
+  (interactive)
+  (if (region-active-p)
+      (indent-region (region-beginning) (region-end))
+    (indent-region 0 (buffer-size))))
+
+(defun my-indent-line ()
+  (interactive)
+  (indent-region (line-beginning-position) (line-end-position)))
+
+(global-set-key (kbd "s-p") 'my-indent)
+(global-set-key (kbd "C-p") 'my-indent-line)
+
+
 ;; search
 (global-set-key (kbd "s-f") 'isearch-forward)
 (define-key isearch-mode-map (kbd "s-f") 'isearch-repeat-forward)
@@ -137,23 +153,14 @@
 (setq k-jump-back (kbd "<s-double-mouse-1>>"))
 (setq k-apropos (kbd "<s-f1>"))
 
-(defmacro case-sel (no-sel sel)
-  `(lambda ()
-     (interactive)
-     (if
-         (region-active-p)
-         ,sel
-       ,no-sel)))
-
-(global-set-key (kbd "s-p") '(lambda ()
-                               (interactive)
-                               (indent-region 0 (buffer-size))))
-
 ;; elisp
-(define-key emacs-lisp-mode-map k-eval (case-sel (eval-defun nil) (eval-region
-                                                                   (region-beginning)
-                                                                   (region-end)
-                                                                   t)))
+(defun my-elisp-eval ()
+  (interactive)
+  (if (region-active-p)
+      (eval-region (region-beginning) (region-end) t)
+    (eval-defun nil)))
+
+(define-key emacs-lisp-mode-map k-eval 'my-elisp-eval)
 (define-key emacs-lisp-mode-map k-compile 'eval-buffer)
 (define-key emacs-lisp-mode-map k-jump-to-definition 'find-function-at-point)
 
@@ -190,13 +197,15 @@
 (setq proof-splash-enable nil)
 
 ;; Slime
+(defun my-slime-eval ()
+  (interactive)
+  (if (region-active-p)
+      (slime-eval-region (region-beginning) (region-end) t)
+    (slime-eval-defun nil)))
+
 (add-hook 'slime-mode-hook
           '(lambda ()
-             (define-key slime-mode-map k-eval (case-sel
-                                                (slime-eval-defun)
-                                                (slime-eval-region
-                                                 (region-beginning)
-                                                 (region-end))))
+             (define-key slime-mode-map k-eval 'my-slime-eval)
              (define-key slime-mode-map k-compile 'slime-eval-buffer)
              (define-key slime-mode-map k-docs 'slime-documentation)
              (define-key slime-mode-map k-jump-to-definition 'slime-edit-definition)
