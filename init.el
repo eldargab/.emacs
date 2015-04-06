@@ -138,10 +138,22 @@
 (global-set-key (kbd "s-p") 'my-indent)
 (global-set-key (kbd "C-p") 'my-indent-line)
 
+;; general sublime like commands
+(defun my-new-line ()
+  (interactive)
+  (move-end-of-line nil)
+  (newline-and-indent))
 
-;; search
-(global-set-key (kbd "s-f") 'isearch-forward)
-(define-key isearch-mode-map (kbd "s-f") 'isearch-repeat-forward)
+(defun my-new-line-above ()
+  (interactive)
+  (previous-line)
+  (move-end-of-line nil)
+  (newline-and-indent))
+
+(global-set-key (kbd "<C-return>") 'my-new-line)
+(global-set-key (kbd "<C-M-return>") 'my-new-line-above)
+(global-set-key (kbd "C-k") 'kill-whole-line)
+
 
 ;; eval, compilation and stuf
 (global-set-key (kbd "<f5>") 'eshell)
