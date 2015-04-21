@@ -225,13 +225,11 @@
 
 (defun my-coq-jump-to-definition ()
   (interactive)
-  (coq-Print)
-  (execute-kbd-macro (kbd "RET")))
+  (execute-kbd-macro (kbd "M-x coq-Print RET RET")))
 
 (defun my-coq-docs ()
   (interactive)
-  (coq-Check)
-  (execute-kbd-macro (kbd "RET")))
+  (execute-kbd-macro (kbd "M-x coq-Check RET RET")))
 
 (add-hook 'coq-mode-hook
           '(lambda ()
