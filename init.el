@@ -13,6 +13,7 @@
 (defvar my-packages
   '(slime
     smart-tab
+    smartparens
     idris-mode))
 
 (dolist (p my-packages)
@@ -22,8 +23,10 @@
 (show-paren-mode 1)
 (delete-selection-mode 1)
 (setq-default indent-tabs-mode nil)
-(setq cursor-type 'bar
-      line-spacing 2
+(setq-default cursor-type 'bar)
+(setq-default line-spacing 2)
+
+(setq inhibit-startup-screen t
       x-select-enable-clipboard t
       x-select-enable-primary t
       save-interprogram-paste-before-kill t
@@ -63,6 +66,13 @@
 
 (require 'smart-tab)
 (global-smart-tab-mode 1)
+
+(require 'smartparens)
+(require 'smartparens-config)
+(smartparens-global-strict-mode)
+(setq sp-highlight-pair-overlay nil)
+(setq sp-highlight-wrap-overlay nil)
+(setq sp-highlight-wrap-tag-overlay nil)
 
 (global-set-key (kbd "<escape>") 'keyboard-escape-quit)
 (global-unset-key (kbd "C-z"))
@@ -229,6 +239,7 @@
 
 (defun my-coq-docs ()
   (interactive)
+  
   (execute-kbd-macro (kbd "M-x coq-Check RET RET")))
 
 (add-hook 'coq-mode-hook
@@ -260,17 +271,3 @@
              (define-key idris-mode-map k-docs 'idris-docs-at-point)
              (define-key idris-mode-map k-apropos 'idris-apropos)
              ))
-
-(custom-set-variables
- ;; custom-set-variables was added by Custom.
- ;; If you edit it by hand, you could mess it up, so be careful.
- ;; Your init file should contain only one such instance.
- ;; If there is more than one, they won't work right.
- '(cursor-type (quote bar))
- '(inhibit-startup-screen t))
-(custom-set-faces
- ;; custom-set-faces was added by Custom.
- ;; If you edit it by hand, you could mess it up, so be careful.
- ;; Your init file should contain only one such instance.
- ;; If there is more than one, they won't work right.
- )
