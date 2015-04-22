@@ -153,10 +153,19 @@
   (interactive)
   (delete-indentation 1))
 
+(defun my-backward-kill ()
+  (interactive)
+  (let ((p (point))
+        (b (progn (skip-chars-backward " \t\n") (point))))
+    (if (> p b)
+        (kill-region b p)
+      (kill-region p (progn (backward-word) (point))))))
+
 (global-set-key (kbd "<M-return>") 'my-new-line)
 (global-set-key (kbd "<M-C-return>") 'my-new-line-above)
 (global-set-key (kbd "s-k") 'my-kill-whole-line)
 (global-set-key (kbd "s-j") 'my-join-line)
+(global-set-key (kbd "<s-backspace>") 'my-backward-kill)
 
 (defun my-toggle-comment ()
   (interactive)
