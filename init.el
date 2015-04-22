@@ -1,7 +1,8 @@
 (if (not (getenv "TERM_PROGRAM"))
     (let ((path (shell-command-to-string
                  "$SHELL -cl \"printf %s \\\"\\\$PATH\\\"\"")))
-      (setenv "PATH" path)))
+      (setenv "PATH" path)
+      (setq exec-path (append exec-path (split-string path ":")))))
 
 (require 'package)
 
@@ -211,7 +212,7 @@
 (define-key emacs-lisp-mode-map k-jump-to-definition 'find-function-at-point)
 
 ;; Slime
-(setq inferior-lisp-program "/usr/local/bin/ccl")
+(setq inferior-lisp-program "ccl")
 
 (defun my-slime-eval ()
   (interactive)
@@ -230,8 +231,6 @@
 
 ;; Proof General
 (load-file (concat user-emacs-directory "ProofGeneral/generic/proof-site.el"))
-
-(setq coq-prog-name "/usr/local/bin/coqtop")
 
 (add-to-list 'completion-ignored-extensions ".v.d")
 
@@ -274,7 +273,6 @@
 (setq proof-splash-enable nil)
 
 ;; IDRIS
-(setq idris-interpreter-path "/Users/eldar/Library/Haskell/bin/idris")
 (setq-default idris-packages '("effects" "contrib"))
 
 (add-to-list 'completion-ignored-extensions ".ibc")
