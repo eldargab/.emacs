@@ -116,6 +116,11 @@
 (global-set-key (kbd "<C-tab>") 'ido-switch-buffer)
 (global-set-key (kbd "<C-s-tab>") 'ibuffer)
 
+(global-set-key (kbd "s-f") 'isearch-forward)
+(define-key isearch-mode-map (kbd "<escape>") 'isearch-abort)
+(define-key isearch-mode-map (kbd "<return>") 'isearch-repeat-forward)
+(define-key isearch-mode-map (kbd "<s-return>") 'isearch-exit)
+
 ;; Pretty printing
 
 (defun my-indent ()
