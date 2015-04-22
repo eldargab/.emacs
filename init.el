@@ -153,8 +153,8 @@
   (interactive)
   (delete-indentation 1))
 
-(global-set-key (kbd "<s-return>") 'my-new-line)
-(global-set-key (kbd "<s-M-return>") 'my-new-line-above)
+(global-set-key (kbd "<M-return>") 'my-new-line)
+(global-set-key (kbd "<M-C-return>") 'my-new-line-above)
 (global-set-key (kbd "s-k") 'my-kill-whole-line)
 (global-set-key (kbd "s-j") 'my-join-line)
 
@@ -177,7 +177,7 @@
 
 ;; eval, compilation and stuf
 (global-set-key (kbd "<f5>") 'eshell)
-(setq k-eval (kbd "<M-return>"))
+(setq k-eval (kbd "<s-return>"))
 (setq k-compile (kbd "<f8>"))
 (setq k-docs (kbd "<f4>"))
 (setq k-jump-to-definition (kbd "<double-mouse-1>"))
@@ -246,7 +246,7 @@
           '(lambda ()
              (set (make-local-variable 'electric-indent-chars) '(?\n ?| ?.))
              (define-key coq-mode-map k-eval 'move-proof-to-point)
-             (define-key coq-mode-map (kbd "<M-C-return>") 'proof-undo-last-successful-command)
+             (define-key coq-mode-map (kbd "<s-C-return>") 'proof-undo-last-successful-command)
              (define-key coq-mode-map k-compile 'coq-Compile)
              (define-key coq-mode-map k-jump-to-definition 'my-coq-jump-to-definition)
              (define-key coq-mode-map k-docs 'my-coq-docs)
