@@ -129,7 +129,7 @@
 (global-set-key (kbd "<s-down>") 'View-scroll-half-page-forward)
 
 (global-set-key (kbd "M-`") 'pop-global-mark)
-
+(global-set-key (kbd "M-z") 'push-mark)
 
 ;; General editing commands
 
