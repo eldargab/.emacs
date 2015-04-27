@@ -70,7 +70,7 @@
 
 (require 'smartparens)
 (require 'smartparens-config)
-(smartparens-global-strict-mode)
+(smartparens-global-mode)
 (setq sp-highlight-pair-overlay nil)
 (setq sp-highlight-wrap-overlay nil)
 (setq sp-highlight-wrap-tag-overlay nil)
@@ -103,15 +103,14 @@
 
 (global-set-key (kbd "M-q") 'winner-undo)
 (global-set-key (kbd "s-M-q") 'winner-redo)
-(global-set-key (kbd "<s-left>") 'windmove-left) 
-(global-set-key (kbd "<s-right>") 'windmove-right) 
-(global-set-key (kbd "<s-up>") 'windmove-up) 
-(global-set-key (kbd "<s-down>") 'windmove-down)
+(global-set-key (kbd "<C-M-s-left>") 'windmove-left) 
+(global-set-key (kbd "<C-M-s-right>") 'windmove-right) 
+(global-set-key (kbd "<C-M-s-up>") 'windmove-up) 
+(global-set-key (kbd "<C-M-s-down>") 'windmove-down)
 (global-set-key (kbd "s-0") 'delete-window)
 (global-set-key (kbd "s-1") 'delete-other-windows)
 (global-set-key (kbd "s-2") 'my-split-window-right)
 (global-set-key (kbd "s-3") 'my-split-window-below)
-
 
 (global-set-key (kbd "s-o") 'ido-find-file)
 (global-set-key (kbd "<C-tab>") 'ido-switch-buffer)
@@ -122,20 +121,15 @@
 (define-key isearch-mode-map (kbd "<return>") 'isearch-repeat-forward)
 (define-key isearch-mode-map (kbd "<s-return>") 'isearch-exit)
 
-;; Pretty printing
+(global-set-key (kbd "<s-right>") 'right-word)
+(global-set-key (kbd "<s-left>") 'left-word)
 
-(defun my-indent ()
-  (interactive)
-  (if (region-active-p)
-      (indent-region (region-beginning) (region-end))
-    (indent-region (line-beginning-position) (line-end-position))))
+(require 'view)
+(global-set-key (kbd "<s-up>") 'View-scroll-half-page-backward)
+(global-set-key (kbd "<s-down>") 'View-scroll-half-page-forward)
 
-(defun my-indent-file ()
-  (interactive)
-  (indent-region 0 (buffer-size)))
+(global-set-key (kbd "M-`") 'pop-global-mark)
 
-(global-set-key (kbd "s-p") 'my-indent)
-(global-set-key (kbd "s-M-π") 'my-indent-file)
 
 ;; General editing commands
 
@@ -172,6 +166,23 @@
 (global-set-key (kbd "s-k") 'my-kill-whole-line)
 (global-set-key (kbd "s-j") 'my-join-line)
 (global-set-key (kbd "<s-backspace>") 'my-backward-kill)
+
+;; Pretty printing
+
+(defun my-indent ()
+  (interactive)
+  (if (region-active-p)
+      (indent-region (region-beginning) (region-end))
+    (indent-region (line-beginning-position) (line-end-position))))
+
+(defun my-indent-file ()
+  (interactive)
+  (indent-region 0 (buffer-size)))
+
+(global-set-key (kbd "s-p") 'my-indent)
+(global-set-key (kbd "s-M-π") 'my-indent-file)
+
+;; Commenting
 
 (defun my-toggle-comment ()
   (interactive)
@@ -259,7 +270,7 @@
           '(lambda ()
              (set (make-local-variable 'electric-indent-chars) '(?\n ?| ?.))
              (define-key coq-mode-map k-eval 'move-proof-to-point)
-             (define-key coq-mode-map (kbd "<s-C-return>") 'proof-undo-last-successful-command)
+             (define-key coq-mode-map (kbd "<s-M-return>") 'proof-undo-last-successful-command)
              (define-key coq-mode-map k-compile 'coq-Compile)
              (define-key coq-mode-map k-jump-to-definition 'my-coq-jump-to-definition)
              (define-key coq-mode-map k-docs 'my-coq-docs)
