@@ -117,9 +117,15 @@
 (global-set-key (kbd "<C-s-tab>") 'ibuffer)
 
 (global-set-key (kbd "s-f") 'isearch-forward)
+(global-set-key (kbd "M-f") 'isearch-backward)
 (define-key isearch-mode-map (kbd "<escape>") 'isearch-abort)
-(define-key isearch-mode-map (kbd "<return>") 'isearch-repeat-forward)
+(define-key isearch-mode-map (kbd "<return>") 'my-isearch-repeat)
 (define-key isearch-mode-map (kbd "<s-return>") 'isearch-exit)
+(defun my-isearch-repeat ()
+  (interactive)
+  (isearch-repeat (if isearch-forward
+                      'forward
+                    'backward)))
 
 (global-set-key (kbd "<s-right>") 'right-word)
 (global-set-key (kbd "<s-left>") 'left-word)
