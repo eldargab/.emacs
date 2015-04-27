@@ -14,7 +14,6 @@
 (defvar my-packages
   '(slime
     smart-tab
-    smartparens
     idris-mode))
 
 (dolist (p my-packages)
@@ -68,12 +67,7 @@
 (require 'smart-tab)
 (global-smart-tab-mode 1)
 
-(require 'smartparens)
-(require 'smartparens-config)
-(smartparens-global-mode)
-(setq sp-highlight-pair-overlay nil)
-(setq sp-highlight-wrap-overlay nil)
-(setq sp-highlight-wrap-tag-overlay nil)
+(electric-pair-mode)
 
 (global-set-key (kbd "<escape>") 'keyboard-escape-quit)
 (global-unset-key (kbd "C-z"))
