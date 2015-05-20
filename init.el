@@ -13,7 +13,7 @@
 
 (defvar my-packages
   '(slime
-    smart-tab
+    auto-complete
     idris-mode))
 
 (dolist (p my-packages)
@@ -42,6 +42,9 @@
 
 (load-file (concat user-emacs-directory "eldar-theme.el"))
 
+(require 'helm-config)
+(helm-mode 1)
+
 ;; Ido setup
 (ido-mode t)
 (setq ido-ignore-extensions t)
@@ -50,7 +53,6 @@
 (add-to-list 'ido-ignore-buffers "\\`*")
 (add-to-list 'ido-ignore-buffers "\.gz")
 (add-to-list 'ido-ignore-buffers "\.v\.d")
-
 (add-hook 'dired-mode-hook 'ensure-buffer-name-ends-in-slash)
 (defun ensure-buffer-name-ends-in-slash ()
   "change buffer name to end with slash"
@@ -64,8 +66,8 @@
 (when (fboundp 'scroll-bar-mode)
   (scroll-bar-mode -1))
 
-(require 'smart-tab)
-(global-smart-tab-mode 1)
+(require 'auto-complete-config)
+(ac-config-default)
 
 (electric-pair-mode)
 
@@ -245,7 +247,7 @@
 
 (add-to-list 'completion-ignored-extensions ".v.d")
 
-(defun move-proof-to-point ()
+(defun my-move-proof-to-point ()
   (interactive)
   (if (> (proof-queue-or-locked-end) (point))
       (save-excursion
@@ -257,20 +259,24 @@
           (proof-assert-until-point)))
       (proof-maybe-follow-locked-end))))
 
+(defun my-proof-go-back ()
+  (interactive)
+  (proof-undo-last-successful-command)
+  (goto-char (proof-unprocessed-begin)))
+
 (defun my-coq-jump-to-definition ()
   (interactive)
   (execute-kbd-macro (kbd "M-x coq-Print RET RET")))
 
 (defun my-coq-docs ()
   (interactive)
-  
   (execute-kbd-macro (kbd "M-x coq-Check RET RET")))
 
 (add-hook 'coq-mode-hook
           '(lambda ()
              (set (make-local-variable 'electric-indent-chars) '(?\n ?| ?.))
-             (define-key coq-mode-map k-eval 'move-proof-to-point)
-             (define-key coq-mode-map (kbd "<s-M-return>") 'proof-undo-last-successful-command)
+             (define-key coq-mode-map k-eval 'my-move-proof-to-point)
+             (define-key coq-mode-map (kbd "<s-M-return>") 'my-proof-go-back)
              (define-key coq-mode-map k-compile 'coq-Compile)
              (define-key coq-mode-map k-jump-to-definition 'my-coq-jump-to-definition)
              (define-key coq-mode-map k-docs 'my-coq-docs)
