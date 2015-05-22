@@ -42,9 +42,6 @@
 
 (load-file (concat user-emacs-directory "eldar-theme.el"))
 
-(require 'helm-config)
-(helm-mode 1)
-
 ;; Ido setup
 (ido-mode t)
 (setq ido-ignore-extensions t)
@@ -71,7 +68,6 @@
 
 (electric-pair-mode)
 
-(global-set-key (kbd "<escape>") 'keyboard-escape-quit)
 (global-unset-key (kbd "C-z"))
 
 ;; Windows and navigation
@@ -112,8 +108,6 @@
 (global-set-key (kbd "<C-tab>") 'ido-switch-buffer)
 (global-set-key (kbd "<C-s-tab>") 'ibuffer)
 
-(global-set-key (kbd "s-f") 'isearch-forward)
-(global-set-key (kbd "M-f") 'isearch-backward)
 (define-key isearch-mode-map (kbd "<escape>") 'isearch-abort)
 (define-key isearch-mode-map (kbd "<return>") 'my-isearch-repeat)
 (define-key isearch-mode-map (kbd "<s-return>") 'isearch-exit)
@@ -123,17 +117,35 @@
                       'forward
                     'backward)))
 
-(global-set-key (kbd "<s-right>") 'right-word)
-(global-set-key (kbd "<s-left>") 'left-word)
+;; Evil mode & editing
+(require 'evil)
 
-(require 'view)
-(global-set-key (kbd "<s-up>") 'View-scroll-half-page-backward)
-(global-set-key (kbd "<s-down>") 'View-scroll-half-page-forward)
+(evil-mode 1)
 
-(global-set-key (kbd "M-`") 'pop-global-mark)
-(global-set-key (kbd "M-z") 'push-mark)
+(defun my-save ()
+  (interactive)
+  (save-buffer)
+  (evil-force-normal-state))
 
-;; General editing commands
+(defun my-escape ()
+  (interactive)
+  (evil-force-normal-state)
+  (keyboard-escape-quit))
+
+(global-set-key (kbd "<escape>") 'keyboard-escape-quit)
+(define-key evil-normal-state-map (kbd "<escape>") 'keyboard-escape-quit)
+(define-key evil-insert-state-map (kbd "<escape>") 'evil-force-normal-state)
+(global-set-key (kbd "s-x") 'evil-force-normal-state)
+(global-set-key (kbd "s-s") 'my-save)
+
+(evil-define-operator my-delete (beg end type)
+  (evil-delete beg end type ?_))
+
+(evil-define-operator my-change (beg end type)
+  (evil-change beg end type ?_))
+
+(define-key evil-normal-state-map (kbd "d") 'my-delete)
+(define-key evil-normal-state-map (kbd "c") 'my-change)
 
 (defun my-new-line ()
   (interactive)
@@ -146,27 +158,16 @@
   (move-end-of-line nil)
   (newline-and-indent))
 
-(defun my-kill-whole-line ()
-  (interactive)
-  (kill-whole-line)
-  (indent-according-to-mode))
-
-(defun my-join-line ()
-  (interactive)
-  (delete-indentation 1))
-
 (defun my-backward-kill ()
   (interactive)
   (let ((p (point))
         (b (progn (skip-chars-backward " \t\n") (point))))
     (if (> p b)
         (kill-region b p)
-      (kill-region p (progn (backward-word) (point))))))
+      (delete-region p (progn (backward-word) (point))))))
 
 (global-set-key (kbd "<M-return>") 'my-new-line)
 (global-set-key (kbd "<M-C-return>") 'my-new-line-above)
-(global-set-key (kbd "s-k") 'my-kill-whole-line)
-(global-set-key (kbd "s-j") 'my-join-line)
 (global-set-key (kbd "<s-backspace>") 'my-backward-kill)
 
 ;; Pretty printing
@@ -206,12 +207,11 @@
 ;; eval, compilation and stuf
 (global-set-key (kbd "<f5>") 'eshell)
 (setq k-eval (kbd "<s-return>"))
-(setq k-compile (kbd "<f8>"))
+(setq k-eval-file (kbd "<f8>"))
 (setq k-docs (kbd "<f4>"))
 (setq k-jump-to-definition (kbd "<double-mouse-1>"))
 (setq k-jump-back (kbd "<s-double-mouse-1>>"))
 (setq k-apropos (kbd "<s-f1>"))
-
 
 ;; elisp
 (defun my-elisp-eval ()
@@ -221,7 +221,7 @@
     (eval-defun nil)))
 
 (define-key emacs-lisp-mode-map k-eval 'my-elisp-eval)
-(define-key emacs-lisp-mode-map k-compile 'eval-buffer)
+(define-key emacs-lisp-mode-map k-eval-file 'eval-buffer)
 (define-key emacs-lisp-mode-map k-jump-to-definition 'find-function-at-point)
 
 ;; Slime
@@ -236,7 +236,7 @@
 (add-hook 'slime-mode-hook
           '(lambda ()
              (define-key slime-mode-map k-eval 'my-slime-eval)
-             (define-key slime-mode-map k-compile 'slime-eval-buffer)
+             (define-key slime-mode-map k-eval-file 'slime-eval-buffer)
              (define-key slime-mode-map k-docs 'slime-documentation)
              (define-key slime-mode-map k-jump-to-definition 'slime-edit-definition)
              (define-key slime-mode-map k-jump-back 'slime-pop-find-definition-stack)))
@@ -277,7 +277,7 @@
              (set (make-local-variable 'electric-indent-chars) '(?\n ?| ?.))
              (define-key coq-mode-map k-eval 'my-move-proof-to-point)
              (define-key coq-mode-map (kbd "<s-M-return>") 'my-proof-go-back)
-             (define-key coq-mode-map k-compile 'coq-Compile)
+             (define-key coq-mode-map k-eval-file 'coq-Compile)
              (define-key coq-mode-map k-jump-to-definition 'my-coq-jump-to-definition)
              (define-key coq-mode-map k-docs 'my-coq-docs)
              (define-key coq-mode-map k-apropos 'coq-SearchAbout)
@@ -296,7 +296,7 @@
 
 (add-hook 'idris-mode-hook
           '(lambda ()
-             (define-key idris-mode-map k-compile 'idris-load-file)
+             (define-key idris-mode-map k-eval-file 'idris-load-file)
              (define-key idris-mode-map k-docs 'idris-docs-at-point)
              (define-key idris-mode-map k-apropos 'idris-apropos)
              ))
