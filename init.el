@@ -44,9 +44,7 @@
 (delete-selection-mode 1)
 (show-paren-mode 1)
 (electric-pair-mode)
-
-(setq interprogram-cut-function 'ns-set-pasteboard)
-(setq interprogram-paste-function 'ns-get-pasteboard)
+(transient-mark-mode 0)
 
 (load-file (concat user-emacs-directory "eldar-theme.el"))
 
@@ -125,6 +123,8 @@
   "Don't do this!"
   nil)
 
+(setq ace-jump-mode-scope 'window)
+
 ;; Escaping
 (global-set-key (kbd "<escape>") 'keyboard-escape-quit)
 (define-key evil-normal-state-map (kbd "<escape>") 'keyboard-escape-quit)
@@ -139,6 +139,11 @@
 ;; Non-kill-ring deletion
 (evil-define-operator my-delete (beg end type)
   (evil-delete beg end type ?_))
+
+(evil-define-operator my-delete-line (beg end type)
+  :motion nil
+  :keep-visual t
+  (evil-delete-line beg end type ?_))
 
 (evil-define-operator my-delete-char (beg end type)
   :motion evil-forward-char
@@ -169,6 +174,13 @@
     (if (= (point) init-point)
         count 0)))
 
+(evil-define-command my-go-back ()
+  :keep-visual t
+  :repeat nil
+  :type exclusive
+  (interactive)
+  (evil-goto-mark ?`))
+
 (defun my-new-line ()
   (interactive)
   (move-end-of-line nil)
@@ -180,15 +192,31 @@
   (move-end-of-line nil)
   (newline-and-indent))
 
+(defun my-paste ()
+  (interactive)
+  (let ((text (current-kill 0)))
+    (when text
+      (if (string-suffix-p "\n" text)
+          (progn
+            (my-new-line)
+            (insert-for-yank (substring text 0 -1)))
+        (insert-for-yank text)))))
+
 ;; Mappings
 (define-key evil-normal-state-map (kbd "SPC") 'ace-jump-mode)
+(define-key evil-normal-state-map (kbd "f") 'ace-jump-char-mode)
+(define-key evil-normal-state-map (kbd "t") 'ace-jump-line-mode)
+(define-key evil-normal-state-map (kbd "<backspace>") 'my-go-back)
+(define-key evil-normal-state-map (kbd "<M-backspace>") 'evil-jump-forward)
 (define-key evil-normal-state-map (kbd "U") 'undo-tree-redo)
 
 (define-key evil-normal-state-map (kbd "j") 'evil-forward-char)
+(define-key evil-visual-state-map (kbd "j") 'evil-forward-char)
 (define-key evil-normal-state-map (kbd "l") 'next-line)
 (define-key evil-visual-state-map (kbd "l") 'next-line)
 
 (define-key evil-normal-state-map (kbd "d") 'my-delete)
+(define-key evil-normal-state-map (kbd "D") 'my-delete-line)
 (define-key evil-normal-state-map (kbd "x") 'my-delete-char)
 (define-key evil-normal-state-map (kbd "X") 'evil-delete)
 (define-key evil-normal-state-map (kbd "c") 'my-change)
@@ -199,13 +227,7 @@
 (global-set-key (kbd "<M-return>") 'my-new-line)
 (global-set-key (kbd "<M-C-return>") 'my-new-line-above)
 
-(define-key evil-normal-state-map (kbd "s") 'evil-paste-after)
-(define-key evil-normal-state-map (kbd "S") 'evil-paste-before)
-
-;; Autocomplete
-
-(require 'auto-complete-config)
-(ac-config-default)
+(define-key evil-normal-state-map (kbd "s") 'my-paste)
 
 ;; Pretty printing
 
@@ -213,14 +235,14 @@
   (interactive)
   (if (region-active-p)
       (indent-region (region-beginning) (region-end))
-    (indent-region (line-beginning-position) (line-end-position))))
+    (indent-region 0 (buffer-size))))
 
-(defun my-indent-file ()
+(defun my-indent-line ()
   (interactive)
-  (indent-region 0 (buffer-size)))
+  (indent-region (line-beginning-position) (line-end-position)))
 
-(global-set-key (kbd "s-p") 'my-indent)
-(global-set-key (kbd "s-M-π") 'my-indent-file)
+(global-set-key (kbd "s-p") 'my-indent-line)
+(define-key evil-normal-state-map (kbd "p") 'my-indent)
 
 ;; Commenting
 
@@ -240,6 +262,16 @@
     (comment-or-uncomment-region start end)))
 
 (global-set-key (kbd "s-/") 'my-toggle-comment)
+
+;; Autocomplete
+
+(require 'auto-complete-config)
+
+(ac-config-default)
+
+(setq ac-auto-show-menu nil)
+(setq-default ac-sources '(ac-source-abbrev ac-source-dictionary ac-source-words-in-buffer))
+
 
 ;; eval, compilation and stuf
 (global-set-key (kbd "<f5>") 'eshell)
