@@ -20,12 +20,9 @@
   (when (not (package-installed-p p))
     (package-install p)))
 
-(show-paren-mode 1)
-(delete-selection-mode 1)
 (setq-default indent-tabs-mode nil)
 (setq-default cursor-type 'bar)
 (setq-default line-spacing 2)
-
 (setq inhibit-startup-screen t
       x-select-enable-clipboard t
       x-select-enable-primary t
@@ -38,11 +35,23 @@
       backup-directory-alist `(("." . ,(concat user-emacs-directory
                                                "backups")))
       mouse-wheel-scroll-amount '(1 ((shift) . 1))
+      mouse-drag-copy-region nil
+      x-select-enable-clipboard nil
+      double-click-fuzz 6
       scroll-step 1)
+(tool-bar-mode -1)
+(scroll-bar-mode -1)
+(delete-selection-mode 1)
+(show-paren-mode 1)
+(electric-pair-mode)
+
+(setq interprogram-cut-function 'ns-set-pasteboard)
+(setq interprogram-paste-function 'ns-get-pasteboard)
 
 (load-file (concat user-emacs-directory "eldar-theme.el"))
 
 ;; Ido setup
+
 (ido-mode t)
 (setq ido-ignore-extensions t)
 (setq ido-enable-flex-matching t)
@@ -57,20 +66,7 @@
     (if (not (string-match "/$" name))
         (rename-buffer (concat name "/") t))))
 
-(when (fboundp 'tool-bar-mode)
-  (tool-bar-mode -1))
-
-(when (fboundp 'scroll-bar-mode)
-  (scroll-bar-mode -1))
-
-(require 'auto-complete-config)
-(ac-config-default)
-
-(electric-pair-mode)
-
-(global-unset-key (kbd "C-z"))
-
-;; Windows and navigation
+;; Windows and files
 
 (require 'uniquify)
 (setq uniquify-buffer-name-style 'forward)
@@ -78,8 +74,7 @@
 (require 'saveplace)
 (setq-default save-place t)
 
-(when (fboundp 'winner-mode)
-  (winner-mode 1))
+(winner-mode 1)
 
 (setq dabbrev-check-all-buffers nil)
 
@@ -108,6 +103,8 @@
 (global-set-key (kbd "<C-tab>") 'ido-switch-buffer)
 (global-set-key (kbd "<C-s-tab>") 'ibuffer)
 
+;; Isearch
+
 (define-key isearch-mode-map (kbd "<escape>") 'isearch-abort)
 (define-key isearch-mode-map (kbd "<return>") 'my-isearch-repeat)
 (define-key isearch-mode-map (kbd "<s-return>") 'isearch-exit)
@@ -118,34 +115,59 @@
                     'backward)))
 
 ;; Evil mode & editing
+
 (require 'evil)
+(require 'ace-jump-mode)
 
 (evil-mode 1)
 
-(defun my-save ()
-  (interactive)
-  (save-buffer)
-  (evil-force-normal-state))
+(defun evil-visual-update-x-selection (&optional buffer) 
+  "Don't do this!"
+  nil)
 
-(defun my-escape ()
-  (interactive)
-  (evil-force-normal-state)
-  (keyboard-escape-quit))
-
+;; Escaping
 (global-set-key (kbd "<escape>") 'keyboard-escape-quit)
 (define-key evil-normal-state-map (kbd "<escape>") 'keyboard-escape-quit)
 (define-key evil-insert-state-map (kbd "<escape>") 'evil-force-normal-state)
 (global-set-key (kbd "s-x") 'evil-force-normal-state)
 (global-set-key (kbd "s-s") 'my-save)
+(defun my-save ()
+  (interactive)
+  (save-buffer)
+  (evil-force-normal-state))
 
+;; Non-kill-ring deletion
 (evil-define-operator my-delete (beg end type)
+  (evil-delete beg end type ?_))
+
+(evil-define-operator my-delete-char (beg end type)
+  :motion evil-forward-char
   (evil-delete beg end type ?_))
 
 (evil-define-operator my-change (beg end type)
   (evil-change beg end type ?_))
 
-(define-key evil-normal-state-map (kbd "d") 'my-delete)
-(define-key evil-normal-state-map (kbd "c") 'my-change)
+(defun my-backward-kill ()
+  (interactive)
+  (let ((p (point))
+        (b (progn (skip-chars-backward " \t\n") (point))))
+    (if (> p b)
+        (delete-region b p)
+      (delete-region p (progn (backward-word) (point))))))
+
+;; Better movement
+
+(defun forward-evil-word (&optional count)
+  (let ((init-point (point)))
+    (forward-word (or count 1))
+    (if (= (point) init-point)
+        count 0)))
+
+(defun forward-evil-WORD (&optional count)
+  (let ((init-point (point)))
+    (forward-symbol (or count 1))
+    (if (= (point) init-point)
+        count 0)))
 
 (defun my-new-line ()
   (interactive)
@@ -158,17 +180,32 @@
   (move-end-of-line nil)
   (newline-and-indent))
 
-(defun my-backward-kill ()
-  (interactive)
-  (let ((p (point))
-        (b (progn (skip-chars-backward " \t\n") (point))))
-    (if (> p b)
-        (kill-region b p)
-      (delete-region p (progn (backward-word) (point))))))
+;; Mappings
+(define-key evil-normal-state-map (kbd "SPC") 'ace-jump-mode)
+(define-key evil-normal-state-map (kbd "U") 'undo-tree-redo)
 
+(define-key evil-normal-state-map (kbd "j") 'evil-forward-char)
+(define-key evil-normal-state-map (kbd "l") 'next-line)
+(define-key evil-visual-state-map (kbd "l") 'next-line)
+
+(define-key evil-normal-state-map (kbd "d") 'my-delete)
+(define-key evil-normal-state-map (kbd "x") 'my-delete-char)
+(define-key evil-normal-state-map (kbd "X") 'evil-delete)
+(define-key evil-normal-state-map (kbd "c") 'my-change)
+(global-set-key (kbd "<s-backspace>") 'my-backward-kill)
+
+(define-key evil-normal-state-map (kbd "n") 'my-new-line)
+(define-key evil-normal-state-map (kbd "N") 'my-new-line-above)
 (global-set-key (kbd "<M-return>") 'my-new-line)
 (global-set-key (kbd "<M-C-return>") 'my-new-line-above)
-(global-set-key (kbd "<s-backspace>") 'my-backward-kill)
+
+(define-key evil-normal-state-map (kbd "s") 'evil-paste-after)
+(define-key evil-normal-state-map (kbd "S") 'evil-paste-before)
+
+;; Autocomplete
+
+(require 'auto-complete-config)
+(ac-config-default)
 
 ;; Pretty printing
 
