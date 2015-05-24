@@ -141,15 +141,20 @@
 (setq ace-jump-mode-scope 'window)
 
 ;; Escaping
-(global-set-key (kbd "<escape>") 'keyboard-escape-quit)
-(define-key evil-normal-state-map (kbd "<escape>") 'keyboard-escape-quit)
-(define-key evil-insert-state-map (kbd "<escape>") 'evil-force-normal-state)
-(global-set-key (kbd "s-x") 'evil-force-normal-state)
-(global-set-key (kbd "s-s") 'my-save)
+
 (defun my-save ()
   (interactive)
   (save-buffer)
   (evil-force-normal-state))
+
+(defun my-escape ()
+  (if (evil-normal-state-p)
+      (keyboard-escape-quit)
+    (evil-force-normal-state)))
+
+(global-set-key (kbd "<escape>") 'my-escape)
+(global-set-key (kbd "s-x") 'evil-force-normal-state)
+(global-set-key (kbd "s-s") 'my-save)
 
 ;; Non-kill-ring deletion
 (evil-define-operator my-delete (beg end type)
