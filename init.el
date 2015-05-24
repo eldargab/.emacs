@@ -103,14 +103,29 @@
 
 ;; Isearch
 
-(define-key isearch-mode-map (kbd "<escape>") 'isearch-abort)
-(define-key isearch-mode-map (kbd "<return>") 'my-isearch-repeat)
-(define-key isearch-mode-map (kbd "<s-return>") 'isearch-exit)
+(add-hook 'isearch-mode-hook 'my-isearch-update-mode)
+
+(defun my-isearch-update-mode ()
+  (setq my-isearch-forward isearch-forward))
+
 (defun my-isearch-repeat ()
   (interactive)
-  (isearch-repeat (if isearch-forward
+  (isearch-repeat (if my-isearch-forward
                       'forward
                     'backward)))
+
+(defun my-isearch-repeat-backward ()
+  (interactive)
+  (let ((mode my-isearch-forward))
+    (isearch-repeat (if mode
+                        'backward
+                      'forward))
+    (setq my-isearch-forward mode)))
+
+(define-key isearch-mode-map (kbd "<escape>") 'isearch-abort)
+(define-key isearch-mode-map (kbd "<return>") 'my-isearch-repeat)
+(define-key isearch-mode-map (kbd "<M-return>") 'my-isearch-repeat-backward)
+(define-key isearch-mode-map (kbd "<s-return>") 'isearch-exit)
 
 ;; Evil mode & editing
 
