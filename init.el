@@ -11,14 +11,7 @@
 
 (package-initialize)
 
-(defvar my-packages
-  '(slime
-    auto-complete
-    idris-mode))
-
-(dolist (p my-packages)
-  (when (not (package-installed-p p))
-    (package-install p)))
+(load-file (concat user-emacs-directory "eldar-theme.el"))
 
 (setq-default indent-tabs-mode nil)
 (setq-default cursor-type 'bar)
@@ -45,8 +38,14 @@
 (show-paren-mode 1)
 (electric-pair-mode)
 (transient-mark-mode 0)
+(global-auto-revert-mode t)
 
-(load-file (concat user-emacs-directory "eldar-theme.el"))
+(add-hook 'before-save-hook 'delete-trailing-whitespace)
+
+(require 'key-chord)
+(key-chord-mode 1)
+
+(global-set-key (kbd "<escape>") 'keyboard-escape-quit)
 
 ;; Ido setup
 
@@ -56,8 +55,8 @@
 
 (add-to-list 'ido-ignore-buffers "\\`*")
 (add-to-list 'ido-ignore-buffers "\.gz")
-(add-to-list 'ido-ignore-buffers "\.v\.d")
 (add-hook 'dired-mode-hook 'ensure-buffer-name-ends-in-slash)
+
 (defun ensure-buffer-name-ends-in-slash ()
   "change buffer name to end with slash"
   (let ((name (buffer-name)))
@@ -77,7 +76,7 @@
 (setq dabbrev-check-all-buffers nil)
 
 (defun my-split-window-right ()
-  (interactive) 
+  (interactive)
   (split-window-right)
   (windmove-right))
 
@@ -88,9 +87,9 @@
 
 (global-set-key (kbd "M-q") 'winner-undo)
 (global-set-key (kbd "s-M-q") 'winner-redo)
-(global-set-key (kbd "<C-M-s-left>") 'windmove-left) 
-(global-set-key (kbd "<C-M-s-right>") 'windmove-right) 
-(global-set-key (kbd "<C-M-s-up>") 'windmove-up) 
+(global-set-key (kbd "<C-M-s-left>") 'windmove-left)
+(global-set-key (kbd "<C-M-s-right>") 'windmove-right)
+(global-set-key (kbd "<C-M-s-up>") 'windmove-up)
 (global-set-key (kbd "<C-M-s-down>") 'windmove-down)
 (global-set-key (kbd "s-0") 'delete-window)
 (global-set-key (kbd "s-1") 'delete-other-windows)
@@ -127,50 +126,23 @@
 (define-key isearch-mode-map (kbd "<M-return>") 'my-isearch-repeat-backward)
 (define-key isearch-mode-map (kbd "<s-return>") 'isearch-exit)
 
-;; Evil mode & editing
-
-(require 'evil)
+;; Text navigation - selection
 (require 'ace-jump-mode)
-
-(evil-mode 1)
-
-(defun evil-visual-update-x-selection (&optional buffer) 
-  "Don't do this!"
-  nil)
+(require 'view)
 
 (setq ace-jump-mode-scope 'window)
 
-;; Escaping
+(global-set-key (kbd "s-l") 'ace-jump-word-mode)
 
-(defun my-save ()
-  (interactive)
-  (save-buffer)
-  (evil-force-normal-state))
+(global-set-key (kbd "s-;") 'backward-char)
+(global-set-key (kbd "s-\\") 'forward-char)
+(global-set-key (kbd "s-[") 'previous-line)
+(global-set-key (kbd "s-'") 'next-line)
 
-(defun my-escape ()
-  (if (evil-normal-state-p)
-      (keyboard-escape-quit)
-    (evil-force-normal-state)))
+(global-set-key (kbd "s-|") 'forward-word)
+(global-set-key (kbd "s-:") 'backward-word)
 
-(global-set-key (kbd "<escape>") 'my-escape)
-(global-set-key (kbd "s-x") 'evil-force-normal-state)
-(global-set-key (kbd "s-s") 'my-save)
-
-;; Non-kill-ring deletion
-(evil-define-operator my-delete (beg end type)
-  (evil-delete beg end type ?_))
-
-(evil-define-operator my-delete-line (beg end type)
-  :motion nil
-  :keep-visual t
-  (evil-delete-line beg end type ?_))
-
-(evil-define-operator my-delete-char (beg end type)
-  :motion evil-forward-char
-  (evil-delete beg end type ?_))
-
-(evil-define-operator my-change (beg end type)
-  (evil-change beg end type ?_))
+;; Editing
 
 (defun my-backward-kill ()
   (interactive)
@@ -179,27 +151,6 @@
     (if (> p b)
         (delete-region b p)
       (delete-region p (progn (backward-word) (point))))))
-
-;; Better movement
-
-(defun forward-evil-word (&optional count)
-  (let ((init-point (point)))
-    (forward-word (or count 1))
-    (if (= (point) init-point)
-        count 0)))
-
-(defun forward-evil-WORD (&optional count)
-  (let ((init-point (point)))
-    (forward-symbol (or count 1))
-    (if (= (point) init-point)
-        count 0)))
-
-(evil-define-command my-go-back ()
-  :keep-visual t
-  :repeat nil
-  :type exclusive
-  (interactive)
-  (evil-goto-mark ?`))
 
 (defun my-new-line ()
   (interactive)
@@ -212,42 +163,20 @@
   (move-end-of-line nil)
   (newline-and-indent))
 
-(defun my-paste ()
+(defun my-kill-whole-line ()
   (interactive)
-  (let ((text (current-kill 0)))
-    (when text
-      (if (string-suffix-p "\n" text)
-          (progn
-            (my-new-line)
-            (insert-for-yank (substring text 0 -1)))
-        (insert-for-yank text)))))
+  (kill-whole-line)
+  (indent-according-to-mode))
 
-;; Mappings
-(define-key evil-normal-state-map (kbd "SPC") 'ace-jump-mode)
-(define-key evil-normal-state-map (kbd "f") 'ace-jump-char-mode)
-(define-key evil-normal-state-map (kbd "t") 'ace-jump-line-mode)
-(define-key evil-normal-state-map (kbd "<backspace>") 'my-go-back)
-(define-key evil-normal-state-map (kbd "<M-backspace>") 'evil-jump-forward)
-(define-key evil-normal-state-map (kbd "U") 'undo-tree-redo)
+(defun my-join-line ()
+  (interactive)
+  (delete-indentation 1))
 
-(define-key evil-normal-state-map (kbd "j") 'evil-forward-char)
-(define-key evil-visual-state-map (kbd "j") 'evil-forward-char)
-(define-key evil-normal-state-map (kbd "l") 'next-line)
-(define-key evil-visual-state-map (kbd "l") 'next-line)
-
-(define-key evil-normal-state-map (kbd "d") 'my-delete)
-(define-key evil-normal-state-map (kbd "D") 'my-delete-line)
-(define-key evil-normal-state-map (kbd "x") 'my-delete-char)
-(define-key evil-normal-state-map (kbd "X") 'evil-delete)
-(define-key evil-normal-state-map (kbd "c") 'my-change)
+(global-set-key (kbd "s-d") 'my-kill-whole-line)
+(global-set-key (kbd "s-j") 'my-join-line)
 (global-set-key (kbd "<s-backspace>") 'my-backward-kill)
-
-(define-key evil-normal-state-map (kbd "n") 'my-new-line)
-(define-key evil-normal-state-map (kbd "N") 'my-new-line-above)
-(global-set-key (kbd "<M-return>") 'my-new-line)
-(global-set-key (kbd "<M-C-return>") 'my-new-line-above)
-
-(define-key evil-normal-state-map (kbd "s") 'my-paste)
+(global-set-key (kbd "<s-return>") 'my-new-line)
+(global-set-key (kbd "<s-M-return>") 'my-new-line-above)
 
 ;; Pretty printing
 
@@ -261,8 +190,8 @@
   (interactive)
   (indent-region (line-beginning-position) (line-end-position)))
 
-(global-set-key (kbd "s-p") 'my-indent-line)
-(define-key evil-normal-state-map (kbd "p") 'my-indent)
+(global-set-key (kbd "s-P") 'my-indent-line)
+(global-set-key (kbd "s-p") 'my-indent)
 
 ;; Commenting
 
@@ -281,21 +210,23 @@
                   (point))))
     (comment-or-uncomment-region start end)))
 
-(global-set-key (kbd "s-/") 'my-toggle-comment)
+(global-set-key (kbd "s-`") 'my-toggle-comment)
 
 ;; Autocomplete
 
 (require 'auto-complete-config)
 
 (ac-config-default)
-
 (setq ac-auto-show-menu nil)
 (setq-default ac-sources '(ac-source-abbrev ac-source-dictionary ac-source-words-in-buffer))
 
+(global-set-key (kbd "s-/") 'auto-complete)
+
 
 ;; eval, compilation and stuf
+
 (global-set-key (kbd "<f5>") 'eshell)
-(setq k-eval (kbd "<s-return>"))
+(setq k-eval (kbd "<M-return>"))
 (setq k-eval-file (kbd "<f8>"))
 (setq k-docs (kbd "<f4>"))
 (setq k-jump-to-definition (kbd "<double-mouse-1>"))
@@ -365,7 +296,7 @@
           '(lambda ()
              (set (make-local-variable 'electric-indent-chars) '(?\n ?| ?.))
              (define-key coq-mode-map k-eval 'my-move-proof-to-point)
-             (define-key coq-mode-map (kbd "<s-M-return>") 'my-proof-go-back)
+             (define-key coq-mode-map (kbd "<M-C-return>") 'my-proof-go-back)
              (define-key coq-mode-map k-eval-file 'coq-Compile)
              (define-key coq-mode-map k-jump-to-definition 'my-coq-jump-to-definition)
              (define-key coq-mode-map k-docs 'my-coq-docs)
