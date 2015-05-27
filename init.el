@@ -4,6 +4,15 @@
       (setenv "PATH" path)
       (setq exec-path (append exec-path (split-string path ":")))))
 
+(defun lib (&optional s)
+  (concat user-emacs-directory "packages/" s))
+
+(defun lib-load (s)
+  (load-file (lib s)))
+
+(add-to-list 'load-path (lib))
+(setq custom-theme-directory (lib))
+
 (require 'package)
 
 (add-to-list 'package-archives
@@ -11,7 +20,14 @@
 
 (package-initialize)
 
-(load-file (concat user-emacs-directory "eldar-theme.el"))
+(setq pkg-list-not-refreshed t)
+
+(defun use-pkg (name)
+  (when (not (package-installed-p name))
+    (when pkg-list-not-refreshed
+      (package-refresh-contents)
+      (setq pkg-list-not-refreshed nil))
+    (package-install name)))
 
 (setq-default indent-tabs-mode nil)
 (setq-default cursor-type 'bar)
@@ -40,10 +56,9 @@
 (transient-mark-mode 0)
 (global-auto-revert-mode t)
 
-(add-hook 'before-save-hook 'delete-trailing-whitespace)
+(lib-load "eldar-theme.el")
 
-(require 'key-chord)
-(key-chord-mode 1)
+(add-hook 'before-save-hook 'delete-trailing-whitespace)
 
 (global-set-key (kbd "<escape>") 'keyboard-escape-quit)
 
@@ -127,6 +142,7 @@
 (define-key isearch-mode-map (kbd "<s-return>") 'isearch-exit)
 
 ;; Text navigation - selection
+(use-pkg 'ace-jump-mode)
 (require 'ace-jump-mode)
 (require 'view)
 
@@ -134,17 +150,14 @@
 
 (global-set-key (kbd "s-l") 'ace-jump-word-mode)
 
-(global-set-key (kbd "s-;") 'backward-char)
-(global-set-key (kbd "s-\\") 'forward-char)
-(global-set-key (kbd "s-[") 'previous-line)
-(global-set-key (kbd "s-'") 'next-line)
+(global-set-key (kbd "<s-backspace>") 'pop-to-mark-command)
 
-(global-set-key (kbd "s-|") 'forward-word)
-(global-set-key (kbd "s-:") 'backward-word)
+(global-set-key (kbd "<s-up>") 'beginning-of-buffer)
+(global-set-key (kbd "<s-down>") 'end-of-buffer)
 
 ;; Editing
 
-(defun my-backward-kill ()
+(defun my-backward-delete ()
   (interactive)
   (let ((p (point))
         (b (progn (skip-chars-backward " \t\n") (point))))
@@ -172,9 +185,9 @@
   (interactive)
   (delete-indentation 1))
 
-(global-set-key (kbd "s-d") 'my-kill-whole-line)
+(global-set-key (kbd "s-k") 'my-kill-whole-line)
 (global-set-key (kbd "s-j") 'my-join-line)
-(global-set-key (kbd "<s-backspace>") 'my-backward-kill)
+(global-set-key (kbd "<M-backspace>") 'my-backward-delete)
 (global-set-key (kbd "<s-return>") 'my-new-line)
 (global-set-key (kbd "<s-M-return>") 'my-new-line-above)
 
@@ -213,7 +226,7 @@
 (global-set-key (kbd "s-`") 'my-toggle-comment)
 
 ;; Autocomplete
-
+(use-pkg 'auto-complete)
 (require 'auto-complete-config)
 
 (ac-config-default)
@@ -245,6 +258,8 @@
 (define-key emacs-lisp-mode-map k-jump-to-definition 'find-function-at-point)
 
 ;; Slime
+(use-pkg 'slime)
+
 (setq inferior-lisp-program "ccl")
 
 (defun my-slime-eval ()
@@ -263,7 +278,7 @@
 
 
 ;; Proof General
-(load-file (concat user-emacs-directory "ProofGeneral/generic/proof-site.el"))
+(lib-load "ProofGeneral/generic/proof-site.el")
 
 (add-to-list 'completion-ignored-extensions ".v.d")
 
@@ -308,8 +323,10 @@
 
 (setq proof-follow-mode 'followdown)
 (setq proof-splash-enable nil)
+(setq coq-compile-before-require t)
 
 ;; IDRIS
+(use-pkg 'idris-mode)
 (setq-default idris-packages '("effects" "contrib"))
 
 (add-to-list 'completion-ignored-extensions ".ibc")

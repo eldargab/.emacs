@@ -4,5 +4,4 @@
 
 !.gitignore
 !init.el
-!eldar-theme.el
-!ProofGeneral
+!packages
