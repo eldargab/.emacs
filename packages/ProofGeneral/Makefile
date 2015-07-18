@@ -1,4 +1,4 @@
-wh##
+##
 ## Makefile for Proof General.
 ## 
 ## Author:  David Aspinall <David.Aspinall@ed.ac.uk>

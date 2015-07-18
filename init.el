@@ -4,14 +4,11 @@
       (setenv "PATH" path)
       (setq exec-path (append exec-path (split-string path ":")))))
 
-(defun lib (&optional s)
-  (concat user-emacs-directory "packages/" s))
 
-(defun lib-load (s)
-  (load-file (lib s)))
+(setq lib (concat user-emacs-directory "packages/"))
 
-(add-to-list 'load-path (lib))
-(setq custom-theme-directory (lib))
+(add-to-list 'load-path lib)
+(setq custom-theme-directory lib)
 
 (require 'package)
 
@@ -56,7 +53,7 @@
 (transient-mark-mode 0)
 (global-auto-revert-mode t)
 
-(lib-load "eldar-theme.el")
+(load-theme 'eldar t)
 
 (add-hook 'before-save-hook 'delete-trailing-whitespace)
 
@@ -238,13 +235,28 @@
 
 ;; eval, compilation and stuf
 
+(defun noop ())
+
 (global-set-key (kbd "<f5>") 'eshell)
-(setq k-eval (kbd "<M-return>"))
-(setq k-eval-file (kbd "<f8>"))
-(setq k-docs (kbd "<f4>"))
-(setq k-jump-to-definition (kbd "<double-mouse-1>"))
-(setq k-jump-back (kbd "<s-double-mouse-1>>"))
-(setq k-apropos (kbd "<s-f1>"))
+
+(setq-default f-eval 'noop)
+(setq-default f-eval-file 'noop)
+(setq-default f-docs 'noop)
+(setq-default f-jump-to-definition 'noop)
+(setq-default f-apropos 'noop)
+
+(defun my-eval () (interactive) (funcall f-eval))
+(defun my-eval-file () (interactive) (funcall f-eval-file))
+(defun my-docs () (interactive) (funcall f-docs))
+(defun my-jump-to-definition () (interactive) (funcall f-jump-to-definition))
+(defun my-apropos () (interactive) (funcall f-apropos))
+
+
+(global-set-key (kbd "<M-return>") 'my-eval)
+(global-set-key (kbd "<f8>") 'my-eval-file)
+(global-set-key (kbd "<f4>") 'my-docs)
+(global-set-key (kbd "<double-mouse-1>") 'my-jump-to-definition)
+(global-set-key (kbd "<s-f1>") 'my-apropos)
 
 ;; elisp
 (defun my-elisp-eval ()
@@ -253,87 +265,10 @@
       (eval-region (region-beginning) (region-end) t)
     (eval-defun nil)))
 
-(define-key emacs-lisp-mode-map k-eval 'my-elisp-eval)
-(define-key emacs-lisp-mode-map k-eval-file 'eval-buffer)
-(define-key emacs-lisp-mode-map k-jump-to-definition 'find-function-at-point)
-
-;; Slime
-(use-pkg 'slime)
-
-(setq inferior-lisp-program "ccl")
-
-(defun my-slime-eval ()
-  (interactive)
-  (if (region-active-p)
-      (slime-eval-region (region-beginning) (region-end) t)
-    (slime-eval-defun nil)))
-
-(add-hook 'slime-mode-hook
+(add-hook 'emacs-lisp-mode-hook
           '(lambda ()
-             (define-key slime-mode-map k-eval 'my-slime-eval)
-             (define-key slime-mode-map k-eval-file 'slime-eval-buffer)
-             (define-key slime-mode-map k-docs 'slime-documentation)
-             (define-key slime-mode-map k-jump-to-definition 'slime-edit-definition)
-             (define-key slime-mode-map k-jump-back 'slime-pop-find-definition-stack)))
+             (setq-local f-eval 'my-elisp-eval)
+             (setq-local f-eval-file 'eval-buffer)
+             (setq-local f-jump-to-definition 'find-function-at-point)))
 
-
-;; Proof General
-(lib-load "ProofGeneral/generic/proof-site.el")
-
-(add-to-list 'completion-ignored-extensions ".v.d")
-
-(defun my-move-proof-to-point ()
-  (interactive)
-  (if (> (proof-queue-or-locked-end) (point))
-      (save-excursion
-        (proof-retract-until-point))
-    (progn
-      (save-excursion
-        (if (proof-only-whitespace-to-locked-region-p)
-            (proof-assert-next-command-interactive)
-          (proof-assert-until-point)))
-      (proof-maybe-follow-locked-end))))
-
-(defun my-proof-go-back ()
-  (interactive)
-  (proof-undo-last-successful-command)
-  (goto-char (proof-unprocessed-begin)))
-
-(defun my-coq-jump-to-definition ()
-  (interactive)
-  (execute-kbd-macro (kbd "M-x coq-Print RET RET")))
-
-(defun my-coq-docs ()
-  (interactive)
-  (execute-kbd-macro (kbd "M-x coq-Check RET RET")))
-
-(add-hook 'coq-mode-hook
-          '(lambda ()
-             (set (make-local-variable 'electric-indent-chars) '(?\n ?| ?.))
-             (define-key coq-mode-map k-eval 'my-move-proof-to-point)
-             (define-key coq-mode-map (kbd "<M-C-return>") 'my-proof-go-back)
-             (define-key coq-mode-map k-eval-file 'coq-Compile)
-             (define-key coq-mode-map k-jump-to-definition 'my-coq-jump-to-definition)
-             (define-key coq-mode-map k-docs 'my-coq-docs)
-             (define-key coq-mode-map k-apropos 'coq-SearchAbout)
-             (define-key coq-mode-map (kbd "M-p") 'coq-Print)
-             (define-key coq-mode-map (kbd "M-c") 'coq-Check)
-             (define-key coq-mode-map (kbd "M-l") 'proof-layout-windows)
-             ))
-
-(setq proof-follow-mode 'followdown)
-(setq proof-splash-enable nil)
-(setq coq-compile-before-require t)
-
-;; IDRIS
-(use-pkg 'idris-mode)
-(setq-default idris-packages '("effects" "contrib"))
-
-(add-to-list 'completion-ignored-extensions ".ibc")
-
-(add-hook 'idris-mode-hook
-          '(lambda ()
-             (define-key idris-mode-map k-eval-file 'idris-load-file)
-             (define-key idris-mode-map k-docs 'idris-docs-at-point)
-             (define-key idris-mode-map k-apropos 'idris-apropos)
-             ))
+(require 'proof-general)
