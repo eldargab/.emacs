@@ -271,4 +271,5 @@
              (setq-local f-eval-file 'eval-buffer)
              (setq-local f-jump-to-definition 'find-function-at-point)))
 
+;; Modes
 (require 'proof-general)

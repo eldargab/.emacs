@@ -30,7 +30,7 @@
 
 (add-hook 'coq-mode-hook
           '(lambda ()
-             (setq-local 'electric-indent-chars '(?\n ?| ?.))
+             (setq-local electric-indent-chars '(?\n ?| ?.))
              (setq-local f-eval 'my-move-proof-to-point)
              (setq-local f-jump-to-definition 'my-coq-jump-to-definition)
              (setq-local f-docs 'my-coq-docs)
